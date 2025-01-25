@@ -1,16 +1,61 @@
-// Airtable configuration
-const AIRTABLE_BASE_ID = 'app7aGU54LVkhT1fd';
-const AIRTABLE_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
-const AIRTABLE_HEADERS = {
-    'Authorization': 'Bearer patG3xfFhZGjGiXWt.8959878dca997d69972b237177713462c43fe7f385ab43d7d45ce500f104d703',
-    'Content-Type': 'application/json'
-};
+// Airtable Service Class
+class AirtableService {
+    constructor() {
+        this.apiKey = "patG3xfFhZGjGiXWt.8959878dca997d69972b237177713462c43fe7f385ab43d7d45ce500f104d703";
+        this.baseId = "app7aGU54LVkhT1fd";
+        this.tableName = "Expenses";
+        this.url = `https://api.airtable.com/v0/${this.baseId}/${this.tableName}`;
+        this.requestQueue = Promise.resolve();
+    }
 
-// State management
+    async createRecord(fields) {
+        try {
+            const response = await fetch(this.url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ records: [{ fields }] })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to create record');
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error creating record:', error);
+            throw error;
+        }
+    }
+
+    async getAllRecords() {
+        try {
+            const response = await fetch(this.url, {
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch records');
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching records:', error);
+            throw error;
+        }
+    }
+}
+
+// Initialize global variables
+const airtableService = new AirtableService();
 let participants = [];
 let expenses = [];
 
-// Initialize when the page loads
+// Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
     // Set up all the button clicks and changes
     document.getElementById('addParticipantBtn').addEventListener('click', addParticipant);
@@ -26,36 +71,6 @@ document.addEventListener('DOMContentLoaded', function() {
     initialize();
 });
 
-// Helper function for Airtable requests
-async function makeAirtableRequest(endpoint, options = {}) {
-    try {
-        const response = await fetch(`${AIRTABLE_URL}${endpoint}`, {
-            ...options,
-            headers: AIRTABLE_HEADERS
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Airtable error: ${response.status} - ${errorText}`);
-        }
-
-        return await response.json();
-    } catch (error) {
-        console.error('Airtable request failed:', error);
-        throw error;
-    }
-}
-
-async function initialize() {
-    try {
-        await loadExpenses();
-        updateUI();
-    } catch (error) {
-        console.error('Initialization error:', error);
-        alert('Failed to load data. Please refresh the page.');
-    }
-}
-
 // Handle different currency symbols
 function getCurrencySymbol(currency) {
     const symbols = {
@@ -64,6 +79,16 @@ function getCurrencySymbol(currency) {
         'HKD': '$'
     };
     return symbols[currency] || currency;
+}
+
+async function initialize() {
+    try {
+        await loadExpenses();
+        updateUI();
+    } catch (error) {
+        console.error('Failed to initialize:', error);
+        alert('Failed to load expenses. Please refresh the page.');
+    }
 }
 
 // Add a new participant
