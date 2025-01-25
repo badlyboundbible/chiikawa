@@ -1,7 +1,10 @@
 // Airtable configuration
-const AIRTABLE_TOKEN = 'patG3xfFhZGjGiXWt.8959878dca997d69972b237177713462c43fe7f385ab43d7d45ce500f104d703';
 const AIRTABLE_BASE_ID = 'app7aGU54LVkhT1fd';
 const AIRTABLE_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
+const AIRTABLE_HEADERS = {
+    'Authorization': 'Bearer patG3xfFhZGjGiXWt.8959878dca997d69972b237177713462c43fe7f385ab43d7d45ce500f104d703',
+    'Content-Type': 'application/json'
+};
 
 // State management
 let participants = [];
@@ -23,9 +26,34 @@ document.addEventListener('DOMContentLoaded', function() {
     initialize();
 });
 
+// Helper function for Airtable requests
+async function makeAirtableRequest(endpoint, options = {}) {
+    try {
+        const response = await fetch(`${AIRTABLE_URL}${endpoint}`, {
+            ...options,
+            headers: AIRTABLE_HEADERS
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Airtable error: ${response.status} - ${errorText}`);
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('Airtable request failed:', error);
+        throw error;
+    }
+}
+
 async function initialize() {
-    await loadExpenses();
-    updateUI();
+    try {
+        await loadExpenses();
+        updateUI();
+    } catch (error) {
+        console.error('Initialization error:', error);
+        alert('Failed to load data. Please refresh the page.');
+    }
 }
 
 // Handle different currency symbols
@@ -117,13 +145,9 @@ async function addExpense() {
     }
 
     try {
-        // Save to Airtable
-        const response = await fetch(`${AIRTABLE_URL}/Expenses`, {
+        // Save to Airtable using our helper function
+        const data = await makeAirtableRequest('/Expenses', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
             body: JSON.stringify({
                 records: [{
                     fields: {
@@ -139,12 +163,7 @@ async function addExpense() {
             })
         });
 
-        if (!response.ok) {
-            throw new Error('Failed to save expense');
-        }
-
         // Add to local list if save was successful
-        const data = await response.json();
         expenses.push({
             id: data.records[0].id,
             description,
@@ -168,18 +187,8 @@ async function addExpense() {
 // Load all expenses from Airtable
 async function loadExpenses() {
     try {
-        const response = await fetch(`${AIRTABLE_URL}/Expenses`, {
-            headers: {
-                'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to load expenses');
-        }
-
-        const data = await response.json();
+        const data = await makeAirtableRequest('/Expenses');
+        
         if (data.records) {
             expenses = data.records.map(record => ({
                 id: record.id,
@@ -203,7 +212,7 @@ async function loadExpenses() {
         }
     } catch (error) {
         console.error('Error loading expenses:', error);
-        alert('Failed to load expenses. Please refresh the page.');
+        throw new Error('Failed to load expenses');
     }
 }
 
@@ -232,7 +241,10 @@ function updateParticipantsList() {
         list.innerHTML = '<div class="empty-state">No participants added yet</div>';
     } else {
         list.innerHTML = participants.map(name => 
-            `<div class="participant-item">${name}</div>`
+            `<div class="participant-item">
+                ${name}
+                <button onclick="removeParticipant('${name}')" class="remove-btn">×</button>
+            </div>`
         ).join('');
     }
     
@@ -241,6 +253,16 @@ function updateParticipantsList() {
         participants.map(name =>
             `<option value="${name}">${name}</option>`
         ).join('');
+}
+
+// Remove a participant (new function)
+function removeParticipant(name) {
+    if (expenses.length > 0) {
+        alert('Cannot remove participants once expenses have been added');
+        return;
+    }
+    participants = participants.filter(p => p !== name);
+    updateUI();
 }
 
 // Update the expenses list display
@@ -258,16 +280,19 @@ function updateExpensesList() {
     );
 
     list.innerHTML = sortedExpenses.map(e => {
-        // Show how the expense was split
+        // Format splits for display
         const splitsDisplay = Object.entries(e.splits)
             .map(([name, amount]) => 
-                `${name}: ${getCurrencySymbol(e.currency)}${amount.toFixed(2)}`
-            ).join(', ');
+                `<div class="split-item">
+                    <span class="split-name">${name}:</span> 
+                    <span class="split-amount">${getCurrencySymbol(e.currency)}${amount.toFixed(2)}</span>
+                </div>`
+            ).join('');
 
         return `
             <div class="expense-item">
                 <div class="expense-header">
-                    <strong>${e.description}</strong>
+                    <strong class="expense-description">${e.description}</strong>
                     <span class="expense-date">${formatDate(e.date)}</span>
                 </div>
                 <div class="expense-amount">
@@ -275,7 +300,8 @@ function updateExpensesList() {
                 </div>
                 <div class="expense-paid-by">Paid by: ${e.paidBy}</div>
                 <div class="expense-splits">
-                    <small>Splits: ${splitsDisplay}</small>
+                    <div class="splits-header">Split details:</div>
+                    <div class="splits-grid">${splitsDisplay}</div>
                 </div>
             </div>
         `;
@@ -301,12 +327,15 @@ function toggleSplitInputs() {
         splitAmounts.innerHTML = participants.map((name, index) => `
             <div class="split-input">
                 <label>${name}</label>
-                <input type="number" 
-                       id="split-${name}" 
-                       value="${equalSplit.toFixed(2)}" 
-                       step="0.01" 
-                       onchange="updateSplits()"
-                       ${index === participants.length - 1 ? 'readonly' : ''}>
+                <div class="input-group">
+                    <span class="currency-symbol">${getCurrencySymbol(document.getElementById('currencySelect').value)}</span>
+                    <input type="number" 
+                           id="split-${name}" 
+                           value="${equalSplit.toFixed(2)}" 
+                           step="0.01" 
+                           onchange="updateSplits()"
+                           ${index === participants.length - 1 ? 'readonly' : ''}>
+                </div>
             </div>
         `).join('');
     } else {
@@ -319,25 +348,25 @@ function updateSplits() {
     const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
     let total = 0;
     
-    // Add up all splits except the last person
+    // Calculate total of all splits except last participant
     participants.slice(0, -1).forEach(name => {
         const input = document.getElementById(`split-${name}`);
         const splitAmount = parseFloat(input.value) || 0;
         total += splitAmount;
     });
 
-    // Auto-calculate last person's amount
+    // Auto-calculate last participant's amount
     const lastParticipant = participants[participants.length - 1];
     if (lastParticipant) {
         const lastInput = document.getElementById(`split-${lastParticipant}`);
         const remainingAmount = parseFloat((amount - total).toFixed(2));
         lastInput.value = remainingAmount;
         
-        // Show in red if it's negative
+        // Show warning if it's negative
         if (remainingAmount < 0) {
-            lastInput.style.color = 'red';
+            lastInput.classList.add('negative-amount');
         } else {
-            lastInput.style.color = '';
+            lastInput.classList.remove('negative-amount');
         }
     }
 }
@@ -348,7 +377,7 @@ function calculateSettlement() {
     const settlements = {};
     const totals = {};
 
-    // Start everyone at zero for each currency
+    // Initialize balances for each participant and currency
     participants.forEach(name => {
         balances[name] = {
             GBP: 0,
@@ -357,26 +386,26 @@ function calculateSettlement() {
         };
     });
 
-    // Calculate everyone's balance
+    // Calculate balances
     expenses.forEach(e => {
-        // Add to the person who paid
+        // Add amount to payer's balance
         balances[e.paidBy][e.currency] += e.amount;
 
-        // Subtract from people who owe
+        // Subtract splits from each participant
         Object.entries(e.splits).forEach(([name, amount]) => {
             balances[name][e.currency] -= amount;
         });
 
-        // Keep track of total expenses in each currency
+        // Update totals for each currency
         totals[e.currency] = (totals[e.currency] || 0) + e.amount;
     });
 
-    // Figure out who needs to pay whom for each currency
+    // Calculate settlements for each currency
     Object.keys(totals).forEach(currency => {
         const currencyBalances = {};
         settlements[currency] = [];
 
-        // Get list of people who owe money or are owed money
+        // Get non-zero balances for this currency
         participants.forEach(name => {
             if (Math.abs(balances[name][currency]) > 0.01) {
                 currencyBalances[name] = balances[name][currency];
@@ -385,20 +414,22 @@ function calculateSettlement() {
 
         // Keep settling until everyone's paid up
         while (Object.keys(currencyBalances).length > 1) {
+            // Find people who owe money (negative balance)
             const debtors = Object.entries(currencyBalances)
                 .filter(([name, balance]) => balance < 0)
-                .sort((a, b) => a[1] - b[1]);  // Biggest debts first
+                .sort((a, b) => a[1] - b[1]);  // Sort by amount owed (most negative first)
 
+            // Find people who are owed money (positive balance)
             const creditors = Object.entries(currencyBalances)
                 .filter(([name, balance]) => balance > 0)
-                .sort((a, b) => b[1] - a[1]);  // Biggest credits first
+                .sort((a, b) => b[1] - a[1]);  // Sort by amount owed (most positive first)
 
             if (debtors.length === 0 || creditors.length === 0) break;
 
             const [debtorName, debtorBalance] = debtors[0];
             const [creditorName, creditorBalance] = creditors[0];
             
-            // Figure out how much to settle
+            // Calculate the amount to settle
             const amount = Math.min(-debtorBalance, creditorBalance);
             const roundedAmount = parseFloat(amount.toFixed(2));
 
@@ -410,17 +441,17 @@ function calculateSettlement() {
                 });
             }
 
-            // Update the balances
+            // Update balances
             currencyBalances[debtorName] = parseFloat((debtorBalance + amount).toFixed(2));
             currencyBalances[creditorName] = parseFloat((creditorBalance - amount).toFixed(2));
 
-            // Remove anyone who's all settled up
+            // Remove settled balances (close to zero)
             if (Math.abs(currencyBalances[debtorName]) < 0.01) delete currencyBalances[debtorName];
             if (Math.abs(currencyBalances[creditorName]) < 0.01) delete currencyBalances[creditorName];
         }
     });
 
-    return { settlements, totals };
+    return { settlements, totals, balances };
 }
 
 // Show the settlement summary on the page
@@ -442,29 +473,55 @@ function updateSettlementSummary() {
             ).join('');
     }
 
-    // Show who needs to pay whom
-    let settlementHtml = '';
-    let hasSettlements = false;
+    // Show the settlements needed
+    if (expenses.length === 0) {
+        summaryDiv.innerHTML = '<div class="empty-state">No expenses to settle</div>';
+        return;
+    }
 
+    let settlementHtml = '';
+    
+    // Show settlements for each currency
     Object.entries(summary.settlements).forEach(([currency, settlements]) => {
         if (settlements.length > 0) {
-            hasSettlements = true;
             settlementHtml += `
                 <div class="currency-settlements">
                     <h3>${currency} Settlements:</h3>
-                    ${settlements.map(s => 
-                        `<div class="settlement-item">
-                            ${s.from} pays ${s.to} 
-                            <strong>${getCurrencySymbol(currency)}${s.amount.toFixed(2)}</strong>
-                        </div>`
-                    ).join('')}
+                    <div class="settlements-list">
+                        ${settlements.map(s => 
+                            `<div class="settlement-item">
+                                <span class="from-person">${s.from}</span>
+                                <span class="arrow">→</span>
+                                <span class="to-person">${s.to}</span>
+                                <span class="amount">
+                                    ${getCurrencySymbol(currency)}${s.amount.toFixed(2)}
+                                </span>
+                            </div>`
+                        ).join('')}
+                    </div>
                 </div>`;
         }
     });
 
-    if (!hasSettlements) {
-        summaryDiv.innerHTML = '<div class="empty-state">No settlements needed</div>';
-    } else {
-        summaryDiv.innerHTML = settlementHtml;
-    }
+    // Show individual balances
+    settlementHtml += `
+        <div class="individual-balances">
+            <h3>Individual Balances:</h3>
+            ${participants.map(name => {
+                const balances = summary.balances[name];
+                const nonZeroBalances = Object.entries(balances)
+                    .filter(([_, amount]) => Math.abs(amount) > 0.01)
+                    .map(([currency, amount]) => 
+                        `${getCurrencySymbol(currency)}${amount.toFixed(2)} ${currency}`
+                    ).join(', ');
+                
+                return nonZeroBalances ? 
+                    `<div class="balance-item">
+                        <span class="person-name">${name}:</span>
+                        <span class="balance-amount">${nonZeroBalances}</span>
+                    </div>` : '';
+            }).join('')}
+        </div>`;
+
+    summaryDiv.innerHTML = settlementHtml || '<div class="empty-state">All settled up!</div>';
 }
