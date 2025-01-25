@@ -1,0 +1,131 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Arial', sans-serif;
+}
+
+body {
+    background-color: #1a365d;
+    color: #333;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.card {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+input, select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+button {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+.participants-list, .expenses-list {
+    margin-top: 20px;
+}
+
+.participants-list div {
+    padding: 8px;
+    background: #f5f5f5;
+    margin-bottom: 5px;
+    border-radius: 4px;
+}
+
+.expense-item {
+    border: 1px solid #ddd;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    background: #f9f9f9;
+}
+
+.expense-item div {
+    margin-bottom: 5px;
+}
+
+.split-amounts {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 15px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.split-amounts div {
+    flex: 1 1 200px;
+}
+
+.settlement-summary {
+    margin-top: 20px;
+}
+
+.settlement-summary div {
+    padding: 8px;
+    background: #f5f5f5;
+    margin-bottom: 5px;
+    border-radius: 4px;
+}
+
+.currency-totals {
+    margin-top: 20px;
+    padding: 15px;
+    background: #e9ecef;
+    border-radius: 4px;
+}
+
+.currency-totals div {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .card {
+        padding: 15px;
+    }
+    
+    .split-amounts div {
+        flex: 1 1 100%;
+    }
+}
