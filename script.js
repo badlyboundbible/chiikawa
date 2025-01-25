@@ -869,19 +869,15 @@ function calculateSettlement() {
     expenses.forEach(e => {
         if (!e || !e.currency || !e.amount || !e.paidBy || !e.splits) return;
 
-        // Add to payer's balance
-        if (balances[e.paidBy] && balances[e.paidBy][e.currency] !== undefined) {
-            balances[e.paidBy][e.currency] += e.amount;
-        }
+        // Add the full amount to payer's balance (positive means they're owed money)
+        balances[e.paidBy][e.currency] = (balances[e.paidBy][e.currency] || 0) + e.amount;
 
-        // Subtract splits from each participant
+        // Subtract what each person owes from their balance
         Object.entries(e.splits).forEach(([name, amount]) => {
-            if (balances[name] && balances[name][e.currency] !== undefined) {
-                balances[name][e.currency] -= amount;
-            }
+            balances[name][e.currency] = (balances[name][e.currency] || 0) - amount;
         });
 
-        // Update totals
+        // Update totals for each currency
         totals[e.currency] = (totals[e.currency] || 0) + e.amount;
     });
 
@@ -890,28 +886,31 @@ function calculateSettlement() {
         settlements[currency] = [];
         const currencyBalances = {};
 
-        // Get non-zero balances
+        // Get non-zero balances for this currency
         participants.forEach(name => {
-            if (balances[name] && Math.abs(balances[name][currency]) > 0.01) {
+            if (Math.abs(balances[name][currency]) > 0.01) {
                 currencyBalances[name] = balances[name][currency];
             }
         });
 
-        // Calculate optimal settlements
+        // Calculate settlements
         while (Object.keys(currencyBalances).length > 1) {
+            // Find people who owe money (negative balance)
             const debtors = Object.entries(currencyBalances)
                 .filter(([_, balance]) => balance < 0)
-                .sort((a, b) => a[1] - b[1]);
+                .sort((a, b) => a[1] - b[1]); // Biggest debts first
 
+            // Find people who are owed money (positive balance)
             const creditors = Object.entries(currencyBalances)
                 .filter(([_, balance]) => balance > 0)
-                .sort((a, b) => b[1] - a[1]);
+                .sort((a, b) => b[1] - a[1]); // Biggest credits first
 
             if (!debtors.length || !creditors.length) break;
 
             const [debtorName, debtorBalance] = debtors[0];
             const [creditorName, creditorBalance] = creditors[0];
-            
+
+            // Find the smallest amount between what's owed and what's due
             const amount = Math.min(-debtorBalance, creditorBalance);
             const roundedAmount = parseFloat(amount.toFixed(2));
 
@@ -923,9 +922,11 @@ function calculateSettlement() {
                 });
             }
 
+            // Update balances
             currencyBalances[debtorName] += amount;
             currencyBalances[creditorName] -= amount;
 
+            // Remove settled balances
             if (Math.abs(currencyBalances[debtorName]) < 0.01) delete currencyBalances[debtorName];
             if (Math.abs(currencyBalances[creditorName]) < 0.01) delete currencyBalances[creditorName];
         }
