@@ -585,25 +585,41 @@ function updateSettlementSummary() {
 
     let settlementHtml = '';
     
-    // Display settlements for each currency
-    Object.entries(summary.settlements).forEach(([currency, settlements]) => {
-        if (settlements.length > 0) {
+    // Group settlements by participant
+    participants.forEach(participant => {
+        let participantSettlements = [];
+        
+        // Collect all settlements involving this participant
+        Object.entries(summary.settlements).forEach(([currency, settlements]) => {
+            settlements.forEach(s => {
+                if (s.from === participant || s.to === participant) {
+                    participantSettlements.push({
+                        ...s,
+                        currency
+                    });
+                }
+            });
+        });
+
+        // Only show participant section if they have settlements
+        if (participantSettlements.length > 0) {
             settlementHtml += `
-                <div class="currency-settlements">
-                    <h3>${currency} Settlements:</h3>
+                <div class="participant-settlements">
+                    <h3>${participant}'s Settlements:</h3>
                     <div class="settlements-list">
-                        ${settlements.map(s => 
-                            `<div class="settlement-item">
-                                <div class="settlement-parties">
-                                    <span class="from-person">${s.from}</span>
-                                    <span class="arrow">→</span>
-                                    <span class="to-person">${s.to}</span>
-                                </div>
-                                <div class="settlement-amount">
-                                    ${getCurrencySymbol(currency)}${s.amount.toFixed(2)}
-                                </div>
-                            </div>`
-                        ).join('')}
+                        ${participantSettlements.map(s => {
+                            const isOwing = s.from === participant;
+                            return `
+                                <div class="settlement-item ${isOwing ? 'owing' : 'receiving'}">
+                                    ${isOwing ? 
+                                        `Pay ${s.to}` :
+                                        `Receive from ${s.from}`
+                                    }
+                                    <span class="settlement-amount">
+                                        ${getCurrencySymbol(s.currency)}${s.amount.toFixed(2)} ${s.currency}
+                                    </span>
+                                </div>`;
+                        }).join('')}
                     </div>
                 </div>`;
         }
@@ -617,7 +633,7 @@ function updateSettlementSummary() {
     if (nonZeroBalances) {
         settlementHtml += `
             <div class="individual-balances">
-                <h3>Individual Balances:</h3>
+                <h3>Overall Balances:</h3>
                 ${participants.map(name => {
                     const balances = summary.balances[name];
                     const nonZeroBalances = Object.entries(balances)
