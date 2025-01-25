@@ -350,3 +350,45 @@ button {
         width: 95%;
     }
 }
+
+.participants-checkbox {
+    margin-bottom: 15px;
+}
+
+.checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.checkbox-item input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+.split-input.not-present {
+    opacity: 0.5;
+}
+
+.split-input.present {
+    opacity: 1;
+}
+
+.split-input input.error {
+    border-color: #e74c3c;
+    background-color: #ffd7d7;
+}
+
+.split-input input:disabled {
+    background-color: #e9ecef;
+    cursor: not-allowed;
+}
