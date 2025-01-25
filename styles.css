@@ -1,3 +1,4 @@
+/* Base styles */
 * {
     box-sizing: border-box;
     margin: 0;
@@ -9,6 +10,7 @@ body {
     background-color: #1a365d;
     color: #333;
     padding: 20px;
+    min-height: 100vh;
 }
 
 .container {
@@ -16,6 +18,7 @@ body {
     margin: 0 auto;
 }
 
+/* Card styles */
 .card {
     background: white;
     border-radius: 15px;
@@ -24,6 +27,14 @@ body {
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
+.card h2 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #f0f2f5;
+}
+
+/* Form styles */
 .form-group {
     margin-bottom: 15px;
 }
@@ -32,102 +43,181 @@ label {
     display: block;
     margin-bottom: 5px;
     font-weight: bold;
+    color: #2c3e50;
 }
 
 input, select {
     width: 100%;
-    padding: 8px;
+    padding: 10px;
     border: 1px solid #ddd;
-    border-radius: 4px;
-    margin-bottom: 10px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+/* Button styles */
+.button-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
 }
 
 button {
-    background-color: #4CAF50;
-    color: white;
     padding: 10px 20px;
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: background-color 0.3s ease;
+    font-weight: 600;
+    transition: all 0.3s ease;
 }
 
-button:hover {
-    background-color: #45a049;
+.primary-btn {
+    background-color: #3498db;
+    color: white;
 }
 
+.primary-btn:hover {
+    background-color: #2980b9;
+}
+
+.cancel-btn {
+    background-color: #95a5a6;
+    color: white;
+}
+
+.cancel-btn:hover {
+    background-color: #7f8c8d;
+}
+
+.delete-btn {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.delete-btn:hover {
+    background-color: #c0392b;
+}
+
+.edit-btn {
+    background-color: #3498db;
+    color: white;
+}
+
+.edit-btn:hover {
+    background-color: #2980b9;
+}
+
+/* List styles */
 .participants-list, .expenses-list {
     margin-top: 20px;
 }
 
-.participants-list div {
-    padding: 8px;
-    background: #f5f5f5;
-    margin-bottom: 5px;
-    border-radius: 4px;
-}
-
-.expense-item {
-    border: 1px solid #ddd;
-    padding: 15px;
-    margin-bottom: 10px;
-    border-radius: 4px;
-    background: #f9f9f9;
-}
-
-.expense-item div {
-    margin-bottom: 5px;
-}
-
-.split-amounts {
+.participant-item {
     display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: #f8f9fa;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    transition: background-color 0.3s ease;
+}
+
+.participant-item:hover {
+    background: #f1f3f5;
+}
+
+/* Expense item styles */
+.expense-item {
+    border: 1px solid #e9ecef;
     padding: 15px;
-    background: #f5f5f5;
-    border-radius: 4px;
-    margin-top: 10px;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: box-shadow 0.3s ease;
 }
 
-.split-amounts div {
-    flex: 1 1 200px;
+.expense-item:hover {
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
 
-.settlement-summary {
-    margin-top: 20px;
+.expense-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
 }
 
-.settlement-summary div {
-    padding: 8px;
-    background: #f5f5f5;
-    margin-bottom: 5px;
-    border-radius: 4px;
+.expense-description {
+    font-size: 1.1em;
+    color: #2c3e50;
 }
 
-.currency-totals {
-    margin-top: 20px;
-    padding: 15px;
-    background: #e9ecef;
-    border-radius: 4px;
+.expense-date {
+    color: #7f8c8d;
+    font-size: 0.9em;
 }
 
-.currency-totals div {
+.expense-amount {
+    font-size: 1.2em;
     font-weight: bold;
-    margin-bottom: 5px;
+    color: #2ecc71;
+    margin: 10px 0;
 }
 
-@media (max-width: 768px) {
-    .container {
-        padding: 10px;
-    }
-    
-    .card {
-        padding: 15px;
-    }
-    
-    .split-amounts div {
-        flex: 1 1 100%;
-    }
+.expense-paid-by {
+    color: #34495e;
+    margin-bottom: 10px;
+}
+
+.expense-actions {
+    float: right;
+    display: flex;
+    gap: 8px;
+}
+
+/* Split amount styles */
+.split-amounts {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+}
+
+.split-input {
+    margin-bottom: 10px;
+}
+
+.input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.currency-symbol {
+    color: #7f8c8d;
+    font-weight: bold;
+}
+
+/* Settlement styles */
+.currency-totals {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.currency-total {
+    font-size: 1.1em;
+    margin-bottom: 8px;
 }
 
 .participant-settlements {
@@ -137,70 +227,126 @@ button:hover {
     border-radius: 8px;
 }
 
-.participant-settlements h3 {
-    color: #2c3e50;
-    margin-bottom: 10px;
-    font-size: 1.1em;
-}
-
-.settlements-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
 .settlement-item {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    padding: 8px 12px;
+    padding: 10px;
     background: white;
     border-radius: 6px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.settlement-item.owing {
-    border-left: 3px solid #e74c3c;
-}
-
-.settlement-item.receiving {
-    border-left: 3px solid #2ecc71;
+    margin-bottom: 8px;
 }
 
 .settlement-amount {
     font-weight: bold;
 }
 
-.owing .settlement-amount {
-    color: #e74c3c;
-}
-
-.receiving .settlement-amount {
+.settlement-amount.positive {
     color: #2ecc71;
 }
 
-.individual-balances {
-    margin-top: 30px;
-    padding: 15px;
-    background: #f1f3f5;
+.settlement-amount.negative {
+    color: #e74c3c;
+}
+
+/* Modal styles */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 1000;
+}
+
+.modal-content {
+    position: relative;
+    background-color: white;
+    margin: 15% auto;
+    padding: 20px;
     border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
 }
 
-.balance-item {
+.modal-buttons {
     display: flex;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid #dee2e6;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
 }
 
-.balance-item:last-child {
-    border-bottom: none;
+/* Loading spinner */
+.loading-spinner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
 }
 
-.positive {
-    color: #2ecc71;
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
 }
 
-.negative {
-    color: #e74c3c;
+.loading-text {
+    color: white;
+    margin-top: 10px;
+    font-size: 1.1em;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 30px;
+    color: #7f8c8d;
+    font-style: italic;
+}
+
+/* Material Icons */
+.material-icons {
+    font-size: 18px;
+    vertical-align: middle;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .card {
+        padding: 15px;
+    }
+    
+    .expense-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .expense-date {
+        margin-top: 5px;
+    }
+    
+    .modal-content {
+        margin: 20% auto;
+        width: 95%;
+    }
 }
