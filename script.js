@@ -28,6 +28,44 @@ async function initialize() {
     updateUI();
 }
 
+// Add this after your initialization code
+async function testAirtableConnection() {
+    try {
+        console.log('Testing Airtable connection...');
+        const response = await fetch(`${AIRTABLE_URL}/Expenses`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const responseText = await response.text();
+        console.log('Airtable Response:', {
+            status: response.status,
+            statusText: response.statusText,
+            body: responseText
+        });
+
+        if (!response.ok) {
+            throw new Error(`Airtable Error: ${response.status} ${responseText}`);
+        }
+
+        alert('Successfully connected to Airtable!');
+    } catch (error) {
+        console.error('Airtable Connection Error:', error);
+        alert('Failed to connect to Airtable: ' + error.message);
+    }
+}
+
+// Add this to your DOMContentLoaded event listener
+document.addEventListener('DOMContentLoaded', function() {
+    // Existing code...
+    
+    // Add this line
+    testAirtableConnection();
+});
+
 // Currency utility functions
 function getCurrencySymbol(currency) {
     const symbols = {
