@@ -8,18 +8,18 @@ class AirtableService {
 
     async createRecord(fields) {
         try {
-            // Validate fields before sending
-            const validatedFields = {
-                Description: fields.Description || '',
+            // Match exact field names from Airtable
+            const airtableFields = {
+                Description: fields.Description,
                 Amount: parseFloat(fields.Amount) || 0,
                 Currency: fields.Currency || 'GBP',
-                PaidBy: fields.PaidBy || '',
-                Participants: fields.Participants || '[]',
-                Splits: fields.Splits || '{}',
+                PaidBy: fields.PaidBy,
+                Participants: fields.Participants, // Add Participants field
+                Splits: fields.Splits,
                 Date: fields.Date || new Date().toISOString().split('T')[0]
             };
 
-            console.log('Sending to Airtable:', validatedFields);
+            console.log('Sending to Airtable:', airtableFields);
 
             const response = await fetch(this.url, {
                 method: 'POST',
@@ -29,7 +29,7 @@ class AirtableService {
                 },
                 body: JSON.stringify({
                     records: [{
-                        fields: validatedFields
+                        fields: airtableFields
                     }]
                 })
             });
@@ -131,7 +131,6 @@ function addParticipant() {
     }
 }
 
-// Add a new expense
 async function addExpense() {
     const description = document.getElementById('expenseDescription').value.trim();
     const amount = parseFloat(document.getElementById('expenseAmount').value);
@@ -194,7 +193,7 @@ async function addExpense() {
             Amount: amount,
             Currency: currency,
             PaidBy: paidBy,
-            Participants: JSON.stringify(participants),
+            Participants: JSON.stringify(participants), // Store participants list
             Splits: JSON.stringify(splits),
             Date: date
         };
