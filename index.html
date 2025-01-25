@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Expense Splitter</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:,">
 </head>
 <body>
     <div class="container">
@@ -13,7 +14,7 @@
             <h2>Add Participants</h2>
             <div class="form-group">
                 <input type="text" id="participantName" placeholder="Enter participant name">
-                <button onclick="addParticipant()">Add Participant</button>
+                <button id="addParticipantBtn">Add Participant</button>
             </div>
             <div class="participants-list" id="participantsList"></div>
         </div>
@@ -39,14 +40,14 @@
                 <select id="paidBy"></select>
                 
                 <label>Split Type:</label>
-                <select id="splitType" onchange="toggleSplitInputs()">
+                <select id="splitType">
                     <option value="equal">Split Equally</option>
                     <option value="manual">Split Manually</option>
                 </select>
                 
                 <div id="splitAmounts" class="split-amounts" style="display: none;"></div>
             </div>
-            <button onclick="addExpense()">Add Expense</button>
+            <button id="addExpenseBtn">Add Expense</button>
         </div>
 
         <!-- Expenses List -->
