@@ -206,17 +206,26 @@ async function loadExpenses() {
     try {
         const data = await airtableService.getAllRecords();
         
-        if (data.records) {
-            expenses = data.records.map(record => ({
-                id: record.id,
-                description: record.fields.Description,
-                amount: record.fields.Amount,
-                currency: record.fields.Currency,
-                paidBy: record.fields.PaidBy,
-                participants: JSON.parse(record.fields.Participants || '[]'),
-                splits: JSON.parse(record.fields.Splits || '{}'),
-                date: record.fields.Date
-            }));
+        if (data && data.records) {
+            expenses = data.records.map(record => {
+                try {
+                    if (!record || !record.fields) return null;
+                    
+                    return {
+                        id: record.id,
+                        description: record.fields.Description || '',
+                        amount: parseFloat(record.fields.Amount) || 0,
+                        currency: record.fields.Currency || 'GBP',
+                        paidBy: record.fields.PaidBy || '',
+                        participants: JSON.parse(record.fields.Participants || '[]'),
+                        splits: JSON.parse(record.fields.Splits || '{}'),
+                        date: record.fields.Date || new Date().toISOString().split('T')[0]
+                    };
+                } catch (error) {
+                    console.error('Error processing record:', error, record);
+                    return null;
+                }
+            }).filter(expense => expense !== null);
 
             // Update participants list from loaded expenses
             const allParticipants = new Set();
@@ -226,6 +235,12 @@ async function loadExpenses() {
                 }
             });
             participants = Array.from(allParticipants);
+            console.log('Loaded expenses:', expenses);
+            console.log('Updated participants:', participants);
+        } else {
+            console.log('No records found in response:', data);
+            expenses = [];
+            participants = [];
         }
     } catch (error) {
         console.error('Error loading expenses:', error);
@@ -286,42 +301,55 @@ function removeParticipant(name) {
 function updateExpensesList() {
     const list = document.getElementById('expensesList');
     
-    if (expenses.length === 0) {
+    if (!expenses || expenses.length === 0) {
         list.innerHTML = '<div class="empty-state">No expenses added yet</div>';
         return;
     }
     
     // Sort expenses by date, newest first
     const sortedExpenses = [...expenses].sort((a, b) => 
-        new Date(b.date) - new Date(a.date)
+        new Date(b.date || '') - new Date(a.date || '')
     );
 
     list.innerHTML = sortedExpenses.map(e => {
-        // Format splits for display
-        const splitsDisplay = Object.entries(e.splits)
-            .map(([name, amount]) => 
-                `<div class="split-item">
-                    <span class="split-name">${name}:</span> 
-                    <span class="split-amount">${getCurrencySymbol(e.currency)}${amount.toFixed(2)}</span>
-                </div>`
-            ).join('');
+        try {
+            // Validate the expense object has all required properties
+            if (!e || typeof e.amount !== 'number') {
+                console.error('Invalid expense record:', e);
+                return '';
+            }
 
-        return `
-            <div class="expense-item">
-                <div class="expense-header">
-                    <strong class="expense-description">${e.description}</strong>
-                    <span class="expense-date">${formatDate(e.date)}</span>
+            // Format splits for display
+            const splitsDisplay = Object.entries(e.splits || {})
+                .map(([name, amount]) => {
+                    const splitAmount = parseFloat(amount) || 0;
+                    return `<div class="split-item">
+                        <span class="split-name">${name}:</span> 
+                        <span class="split-amount">${getCurrencySymbol(e.currency)}${splitAmount.toFixed(2)}</span>
+                    </div>`;
+                })
+                .join('');
+
+            return `
+                <div class="expense-item">
+                    <div class="expense-header">
+                        <strong class="expense-description">${e.description || 'No description'}</strong>
+                        <span class="expense-date">${formatDate(e.date || new Date())}</span>
+                    </div>
+                    <div class="expense-amount">
+                        ${getCurrencySymbol(e.currency)}${e.amount.toFixed(2)}
+                    </div>
+                    <div class="expense-paid-by">Paid by: ${e.paidBy || 'Unknown'}</div>
+                    <div class="expense-splits">
+                        <div class="splits-grid">${splitsDisplay}</div>
+                    </div>
                 </div>
-                <div class="expense-amount">
-                    ${getCurrencySymbol(e.currency)}${e.amount.toFixed(2)}
-                </div>
-                <div class="expense-paid-by">Paid by: ${e.paidBy}</div>
-                <div class="expense-splits">
-                    <div class="splits-grid">${splitsDisplay}</div>
-                </div>
-            </div>
-        `;
-    }).join('');
+            `;
+        } catch (error) {
+            console.error('Error rendering expense:', error, e);
+            return '';
+        }
+    }).filter(html => html).join('');
 }
 
 // Format date for display
