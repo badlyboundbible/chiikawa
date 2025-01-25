@@ -563,6 +563,97 @@ function updateSplitAmounts() {
     });
 }
 
+// Update settlement summary display
+function updateSettlementSummary() {
+    const summary = calculateSettlement();
+    const summaryDiv = document.getElementById('settlementSummary');
+    const totalsDiv = document.getElementById('currencyTotals');
+
+    // Display currency totals
+    if (Object.keys(summary.totals).length === 0) {
+        totalsDiv.innerHTML = '<div class="empty-state">No expenses yet</div>';
+    } else {
+        totalsDiv.innerHTML = Object.entries(summary.totals)
+            .map(([currency, total]) =>
+                `<div class="currency-total">
+                    <strong>Total ${currency}:</strong> 
+                    ${getCurrencySymbol(currency)}${total.toFixed(2)}
+                </div>`
+            ).join('');
+    }
+
+    // Handle no expenses case
+    if (expenses.length === 0) {
+        summaryDiv.innerHTML = '<div class="empty-state">No expenses to settle</div>';
+        return;
+    }
+
+    let settlementHtml = '';
+    
+    // Display settlements by participant
+    participants.forEach(participant => {
+        let participantSettlements = [];
+        
+        // Collect all settlements involving this participant
+        Object.entries(summary.settlements).forEach(([currency, settlements]) => {
+            settlements.forEach(s => {
+                if (s.from === participant || s.to === participant) {
+                    participantSettlements.push({
+                        ...s,
+                        currency
+                    });
+                }
+            });
+        });
+
+        // Only show participant section if they have settlements
+        if (participantSettlements.length > 0) {
+            settlementHtml += `
+                <div class="participant-settlements">
+                    <h3>${participant}'s Settlements:</h3>
+                    <div class="settlements-list">
+                        ${participantSettlements.map(s => {
+                            const isOwing = s.from === participant;
+                            return `
+                                <div class="settlement-item ${isOwing ? 'owing' : 'receiving'}">
+                                    ${isOwing ? 
+                                        `Pay ${s.to}` :
+                                        `Receive from ${s.from}`
+                                    }
+                                    <span class="settlement-amount">
+                                        ${getCurrencySymbol(s.currency)}${s.amount.toFixed(2)} ${s.currency}
+                                    </span>
+                                </div>`;
+                        }).join('')}
+                    </div>
+                </div>`;
+        }
+
+        // Display individual balance for this participant
+        const balances = summary.balances[participant];
+        if (balances) {
+            const nonZeroBalances = Object.entries(balances)
+                .filter(([_, amount]) => Math.abs(amount) > 0.01)
+                .map(([currency, amount]) => {
+                    const formattedAmount = amount.toFixed(2);
+                    return `<span class="${amount < 0 ? 'negative' : 'positive'}">
+                        ${getCurrencySymbol(currency)}${formattedAmount} ${currency}
+                    </span>`;
+                }).join(', ');
+
+            if (nonZeroBalances) {
+                settlementHtml += `
+                    <div class="balance-item">
+                        <span class="person-name">${participant}'s balance:</span>
+                        <span class="balance-amount">${nonZeroBalances}</span>
+                    </div>`;
+            }
+        }
+    });
+
+    summaryDiv.innerHTML = settlementHtml || '<div class="empty-state">All settled up!</div>';
+}
+
 // Format date for display
 function formatDate(dateString) {
     const options = { year: 'numeric', month: 'short', day: 'numeric' };
