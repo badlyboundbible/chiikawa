@@ -483,6 +483,80 @@ function calculateSettlement() {
         totals[e.currency] = (totals[e.currency] || 0) + e.amount;
     });
 
+    // Calculate settlements for each currency
+    Object.keys(totals).forEach(currency => {
+        const currencyBalances = {};
+        settlements[currency] = [];
+
+        // Get non-zero balances
+        participants.forEach(name => {
+            if (name && balances[name] && Math.abs(balances[name][currency]) > 0.01) {
+                currencyBalances[name] = balances[name][currency];
+            }
+        });
+
+        // Calculate optimal settlements
+        while (Object.keys(currencyBalances).length > 1) {
+            // Find people who owe money (negative balance)
+            const debtors = Object.entries(currencyBalances)
+                .filter(([name, balance]) => balance < 0)
+                .sort((a, b) => a[1] - b[1]); // Biggest debts first
+
+            // Find people who are owed money (positive balance)
+            const creditors = Object.entries(currencyBalances)
+                .filter(([name, balance]) => balance > 0)
+                .sort((a, b) => b[1] - a[1]); // Biggest credits first
+
+            if (debtors.length === 0 || creditors.length === 0) break;
+
+            const [debtorName, debtorBalance] = debtors[0];
+            const [creditorName, creditorBalance] = creditors[0];
+            
+            // Calculate settlement amount
+            const amount = Math.min(-debtorBalance, creditorBalance);
+            const roundedAmount = parseFloat(amount.toFixed(2));
+
+            if (roundedAmount > 0) {
+                settlements[currency].push({
+                    from: debtorName,
+                    to: creditorName,
+                    amount: roundedAmount
+                });
+            }
+
+            // Update balances
+            currencyBalances[debtorName] = parseFloat((debtorBalance + amount).toFixed(2));
+            currencyBalances[creditorName] = parseFloat((creditorBalance - amount).toFixed(2));
+
+            // Remove settled balances
+            if (Math.abs(currencyBalances[debtorName]) < 0.01) delete currencyBalances[debtorName];
+            if (Math.abs(currencyBalances[creditorName]) < 0.01) delete currencyBalances[creditorName];
+        }
+    });
+
+    return { settlements, totals, balances };
+}
+
+    // Calculate balances for each expense with validation
+    expenses.forEach(e => {
+        if (!e || !e.currency || !e.amount || !e.paidBy || !e.splits) return;
+
+        // Add to payer's balance
+        if (balances[e.paidBy] && balances[e.paidBy][e.currency] !== undefined) {
+            balances[e.paidBy][e.currency] += e.amount;
+        }
+
+        // Subtract splits from each participant
+        Object.entries(e.splits).forEach(([name, amount]) => {
+            if (balances[name] && balances[name][e.currency] !== undefined) {
+                balances[name][e.currency] -= amount;
+            }
+        });
+
+        // Update totals
+        totals[e.currency] = (totals[e.currency] || 0) + e.amount;
+    });
+
     // Rest of the settlement calculation logic...
 
 // Update settlement summary display
