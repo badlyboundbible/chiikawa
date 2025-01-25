@@ -129,3 +129,78 @@ button:hover {
         flex: 1 1 100%;
     }
 }
+
+.participant-settlements {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.participant-settlements h3 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+    font-size: 1.1em;
+}
+
+.settlements-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.settlement-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.settlement-item.owing {
+    border-left: 3px solid #e74c3c;
+}
+
+.settlement-item.receiving {
+    border-left: 3px solid #2ecc71;
+}
+
+.settlement-amount {
+    font-weight: bold;
+}
+
+.owing .settlement-amount {
+    color: #e74c3c;
+}
+
+.receiving .settlement-amount {
+    color: #2ecc71;
+}
+
+.individual-balances {
+    margin-top: 30px;
+    padding: 15px;
+    background: #f1f3f5;
+    border-radius: 8px;
+}
+
+.balance-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.balance-item:last-child {
+    border-bottom: none;
+}
+
+.positive {
+    color: #2ecc71;
+}
+
+.negative {
+    color: #e74c3c;
+}
