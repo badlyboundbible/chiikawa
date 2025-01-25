@@ -163,7 +163,7 @@ function getCurrencySymbol(currency) {
     return symbols[currency] || currency;
 }
 
-// Add a new participant
+// Participant management
 function addParticipant() {
     const nameInput = document.getElementById('participantName');
     const name = nameInput.value.trim();
@@ -181,9 +181,32 @@ function addParticipant() {
     participants.push(name);
     nameInput.value = '';
     updateUI();
+    updatePresentParticipants(); // Update checkboxes when adding new participant
 }
 
-// Load all expenses from Airtable
+// Update present participants checkboxes
+function updatePresentParticipants() {
+    const container = document.getElementById('presentParticipants');
+    container.innerHTML = participants.map(name => `
+        <div class="checkbox-item">
+            <input type="checkbox" 
+                   id="present-${name}" 
+                   value="${name}" 
+                   checked
+                   onchange="updateSplitAmounts()">
+            <label for="present-${name}">${name}</label>
+        </div>
+    `).join('');
+}
+
+// Get present participants
+function getPresentParticipants() {
+    return participants.filter(name => 
+        document.getElementById(`present-${name}`)?.checked
+    );
+}
+
+// Load expenses from Airtable
 async function loadExpenses() {
     try {
         const data = await airtableService.getAllRecords();
@@ -196,6 +219,7 @@ async function loadExpenses() {
                 currency: record.fields.Currency || 'GBP',
                 paidBy: record.fields.PaidBy || '',
                 participants: JSON.parse(record.fields.Participants || '[]'),
+                presentParticipants: JSON.parse(record.fields.PresentParticipants || '[]'),
                 splits: JSON.parse(record.fields.Splits || '{}'),
                 date: record.fields.Date || new Date().toISOString().split('T')[0]
             }));
@@ -208,8 +232,7 @@ async function loadExpenses() {
                 }
             });
             participants = Array.from(allParticipants);
-            console.log('Loaded expenses:', expenses);
-            console.log('Updated participants:', participants);
+            updatePresentParticipants(); // Initialize checkboxes after loading
         }
     } catch (error) {
         console.error('Error loading expenses:', error);
@@ -239,32 +262,34 @@ async function addExpense() {
         alert('Please select who paid');
         return;
     }
-    if (participants.length < 2) {
-        alert('Please add at least two participants');
+
+    const presentParticipants = getPresentParticipants();
+    if (presentParticipants.length === 0) {
+        alert('Please select at least one present participant');
         return;
     }
 
     // Calculate splits
     let splits = {};
     if (splitType === 'equal') {
-        const splitAmount = amount / participants.length;
-        participants.forEach(name => {
+        const splitAmount = amount / presentParticipants.length;
+        presentParticipants.forEach(name => {
             splits[name] = parseFloat(splitAmount.toFixed(2));
         });
         
         // Fix rounding errors
         const totalSplit = Object.values(splits).reduce((sum, val) => sum + val, 0);
         if (totalSplit !== amount) {
-            const firstParticipant = participants[0];
+            const firstParticipant = presentParticipants[0];
             splits[firstParticipant] += parseFloat((amount - totalSplit).toFixed(2));
         }
     } else {
         let total = 0;
-        participants.forEach(name => {
+        presentParticipants.forEach(name => {
             const input = document.getElementById(`split-${name}`);
             const splitAmount = parseFloat(input.value) || 0;
             splits[name] = parseFloat(splitAmount.toFixed(2));
-            total += splits[name];
+            total += splitAmount;
         });
 
         if (Math.abs(total - amount) > 0.01) {
@@ -282,6 +307,7 @@ async function addExpense() {
             Currency: currency,
             PaidBy: paidBy,
             Participants: JSON.stringify(participants),
+            PresentParticipants: JSON.stringify(presentParticipants),
             Splits: JSON.stringify(splits),
             Date: date
         };
@@ -296,6 +322,7 @@ async function addExpense() {
             currency,
             paidBy,
             participants: [...participants],
+            presentParticipants: [...presentParticipants],
             splits,
             date
         });
@@ -320,6 +347,9 @@ function clearExpenseForm() {
     document.getElementById('addExpenseBtn').textContent = 'Add Expense';
     currentEditId = null;
 
+    // Reset present participants
+    updatePresentParticipants();
+
     // Update form title
     document.getElementById('expenseFormTitle').textContent = 'Add Expense';
 
@@ -338,6 +368,7 @@ function removeParticipant(name) {
     }
     participants = participants.filter(p => p !== name);
     updateUI();
+    updatePresentParticipants(); // Update checkboxes after removing participant
 }
 
 // Update all UI elements
@@ -394,15 +425,22 @@ function updateExpensesList() {
                 return '';
             }
 
+            // Format splits display with present participants highlighted
             const splitsDisplay = Object.entries(e.splits || {})
                 .map(([name, amount]) => {
                     const splitAmount = parseFloat(amount) || 0;
-                    return `<div class="split-item">
+                    const isPresent = e.presentParticipants?.includes(name);
+                    return `<div class="split-item ${isPresent ? 'present' : 'not-present'}">
                         <span class="split-name">${name}:</span> 
                         <span class="split-amount">${getCurrencySymbol(e.currency)}${splitAmount.toFixed(2)}</span>
                     </div>`;
                 })
                 .join('');
+
+            // Format present participants list
+            const presentList = e.presentParticipants?.length 
+                ? `<div class="present-participants">Present: ${e.presentParticipants.join(', ')}</div>` 
+                : '';
 
             return `
                 <div class="expense-item" data-expense-id="${e.id}">
@@ -422,6 +460,7 @@ function updateExpensesList() {
                         ${getCurrencySymbol(e.currency)}${e.amount.toFixed(2)}
                     </div>
                     <div class="expense-paid-by">Paid by: ${e.paidBy || 'Unknown'}</div>
+                    ${presentList}
                     <div class="expense-splits">
                         <div class="splits-grid">${splitsDisplay}</div>
                     </div>
@@ -434,167 +473,100 @@ function updateExpensesList() {
     }).filter(html => html).join('');
 }
 
-// Update settlement summary display
-function updateSettlementSummary() {
-    const summary = calculateSettlement();
-    const summaryDiv = document.getElementById('settlementSummary');
-    const totalsDiv = document.getElementById('currencyTotals');
-
-    // Display currency totals
-    if (Object.keys(summary.totals).length === 0) {
-        totalsDiv.innerHTML = '<div class="empty-state">No expenses yet</div>';
-    } else {
-        totalsDiv.innerHTML = Object.entries(summary.totals)
-            .map(([currency, total]) =>
-                `<div class="currency-total">
-                    <strong>Total ${currency}:</strong> 
-                    ${getCurrencySymbol(currency)}${total.toFixed(2)}
-                </div>`
-            ).join('');
-    }
-
-    // Handle no expenses case
-    if (expenses.length === 0) {
-        summaryDiv.innerHTML = '<div class="empty-state">No expenses to settle</div>';
-        return;
-    }
-
-    let settlementHtml = '';
-    
-    // Display settlements by participant
-    participants.forEach(participant => {
-        let participantSettlements = [];
-        
-        // Collect all settlements involving this participant
-        Object.entries(summary.settlements).forEach(([currency, settlements]) => {
-            settlements.forEach(s => {
-                if (s.from === participant || s.to === participant) {
-                    participantSettlements.push({
-                        ...s,
-                        currency
-                    });
-                }
-            });
-        });
-
-        // Only show participant section if they have settlements
-        if (participantSettlements.length > 0) {
-            settlementHtml += `
-                <div class="participant-settlements">
-                    <h3>${participant}'s Settlements:</h3>
-                    <div class="settlements-list">
-                        ${participantSettlements.map(s => {
-                            const isOwing = s.from === participant;
-                            return `
-                                <div class="settlement-item ${isOwing ? 'owing' : 'receiving'}">
-                                    ${isOwing ? 
-                                        `Pay ${s.to}` :
-                                        `Receive from ${s.from}`
-                                    }
-                                    <span class="settlement-amount">
-                                        ${getCurrencySymbol(s.currency)}${s.amount.toFixed(2)} ${s.currency}
-                                    </span>
-                                </div>`;
-                        }).join('')}
-                    </div>
-                </div>`;
-        }
-    });
-
-    // Display individual balances
-    const nonZeroBalances = participants.some(name => 
-        Object.values(summary.balances[name]).some(amount => Math.abs(amount) > 0.01)
-    );
-
-    if (nonZeroBalances) {
-        settlementHtml += `
-            <div class="individual-balances">
-                <h3>Overall Balances:</h3>
-                ${participants.map(name => {
-                    const balances = summary.balances[name];
-                    const nonZeroBalances = Object.entries(balances)
-                        .filter(([_, amount]) => Math.abs(amount) > 0.01)
-                        .map(([currency, amount]) => {
-                            const formattedAmount = amount.toFixed(2);
-                            return `<span class="${amount < 0 ? 'negative' : 'positive'}">
-                                ${getCurrencySymbol(currency)}${formattedAmount} ${currency}
-                            </span>`;
-                        }).join(', ');
-                    
-                    return nonZeroBalances ? 
-                        `<div class="balance-item">
-                            <span class="person-name">${name}:</span>
-                            <span class="balance-amount">${nonZeroBalances}</span>
-                        </div>` : '';
-                }).join('')}
-            </div>`;
-    }
-
-    summaryDiv.innerHTML = settlementHtml || '<div class="empty-state">All settled up!</div>';
-}
-
-// Format date for display
-function formatDate(dateString) {
-    const options = { year: 'numeric', month: 'short', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
-}
-
 // Handle split type toggle
 function toggleSplitInputs() {
     const splitType = document.getElementById('splitType').value;
     const splitAmounts = document.getElementById('splitAmounts');
     const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
     const currency = document.getElementById('currencySelect').value;
+    const presentParticipants = getPresentParticipants();
+    
+    if (presentParticipants.length === 0) {
+        alert('Please select at least one present participant');
+        return;
+    }
     
     if (splitType === 'manual') {
         splitAmounts.style.display = 'block';
-        const equalSplit = amount / participants.length;
+        const equalSplit = amount / presentParticipants.length;
         
-        splitAmounts.innerHTML = participants.map((name, index) => `
-            <div class="split-input">
-                <label>${name}</label>
-                <div class="input-group">
-                    <span class="currency-symbol">${getCurrencySymbol(currency)}</span>
-                    <input type="number" 
-                           id="split-${name}" 
-                           value="${equalSplit.toFixed(2)}" 
-                           step="0.01" 
-                           onchange="updateSplits()"
-                           ${index === participants.length - 1 ? 'readonly' : ''}>
+        splitAmounts.innerHTML = participants.map(name => {
+            const isPresent = presentParticipants.includes(name);
+            return `
+                <div class="split-input ${isPresent ? 'present' : 'not-present'}">
+                    <label>${name}</label>
+                    <div class="input-group">
+                        <span class="currency-symbol">${getCurrencySymbol(currency)}</span>
+                        <input type="number" 
+                               id="split-${name}" 
+                               value="${isPresent ? equalSplit.toFixed(2) : '0.00'}" 
+                               step="0.01" 
+                               onchange="updateSplitAmounts()"
+                               ${!isPresent ? 'disabled' : ''}>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     } else {
         splitAmounts.style.display = 'none';
     }
+    updateSplitAmounts();
 }
 
 // Update split amounts
-function updateSplits() {
+function updateSplitAmounts() {
     const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
-    let total = 0;
-    
-    // Calculate total of all splits except last participant
-    participants.slice(0, -1).forEach(name => {
-        const input = document.getElementById(`split-${name}`);
-        const splitAmount = parseFloat(input.value) || 0;
-        total += splitAmount;
-    });
+    const presentParticipants = getPresentParticipants();
+    const splitType = document.getElementById('splitType').value;
 
-    // Auto-calculate last participant's amount
-    const lastParticipant = participants[participants.length - 1];
-    if (lastParticipant) {
-        const lastInput = document.getElementById(`split-${lastParticipant}`);
-        const remainingAmount = parseFloat((amount - total).toFixed(2));
-        lastInput.value = remainingAmount;
-        
-        // Show warning if negative
-        if (remainingAmount < 0) {
-            lastInput.classList.add('negative-amount');
+    if (presentParticipants.length === 0) {
+        alert('Please select at least one present participant');
+        return;
+    }
+
+    if (splitType === 'equal') {
+        const equalSplit = amount / presentParticipants.length;
+        presentParticipants.forEach(name => {
+            const input = document.getElementById(`split-${name}`);
+            if (input) {
+                input.value = equalSplit.toFixed(2);
+            }
+        });
+    } else {
+        let total = 0;
+        presentParticipants.forEach(name => {
+            const input = document.getElementById(`split-${name}`);
+            if (input) {
+                const splitAmount = parseFloat(input.value) || 0;
+                total += splitAmount;
+            }
+        });
+
+        if (Math.abs(total - amount) > 0.01) {
+            document.querySelectorAll('.split-input.present input').forEach(input => {
+                input.classList.add('error');
+            });
         } else {
-            lastInput.classList.remove('negative-amount');
+            document.querySelectorAll('.split-input.present input').forEach(input => {
+                input.classList.remove('error');
+            });
         }
     }
+
+    // Disable inputs for non-present participants and set their values to 0
+    participants.forEach(name => {
+        const input = document.getElementById(`split-${name}`);
+        if (input && !presentParticipants.includes(name)) {
+            input.value = '0.00';
+            input.disabled = true;
+        }
+    });
+}
+
+// Format date for display
+function formatDate(dateString) {
+    const options = { year: 'numeric', month: 'short', day: 'numeric' };
+    return new Date(dateString).toLocaleDateString(undefined, options);
 }
 
 // Edit expense
@@ -621,6 +593,15 @@ function editExpense(expenseId) {
     document.getElementById('currencySelect').value = expense.currency;
     document.getElementById('paidBy').value = expense.paidBy;
 
+    // Update present participants checkboxes
+    updatePresentParticipants();
+    expense.presentParticipants?.forEach(name => {
+        const checkbox = document.getElementById(`present-${name}`);
+        if (checkbox) {
+            checkbox.checked = true;
+        }
+    });
+
     // Show split amounts
     document.getElementById('splitType').value = 'manual';
     toggleSplitInputs();
@@ -628,6 +609,7 @@ function editExpense(expenseId) {
         const input = document.getElementById(`split-${name}`);
         if (input) {
             input.value = amount;
+            input.disabled = !expense.presentParticipants?.includes(name);
         }
     });
 
@@ -647,7 +629,7 @@ async function updateExpenseRecord(expenseId) {
     const amount = parseFloat(document.getElementById('expenseAmount').value);
     const currency = document.getElementById('currencySelect').value;
     const paidBy = document.getElementById('paidBy').value;
-    const splitType = document.getElementById('splitType').value;
+    const presentParticipants = getPresentParticipants();
 
     // Validation
     if (!description || !amount || !paidBy) {
@@ -655,26 +637,24 @@ async function updateExpenseRecord(expenseId) {
         return;
     }
 
+    if (presentParticipants.length === 0) {
+        alert('Please select at least one present participant');
+        return;
+    }
+
     // Calculate splits
     let splits = {};
-    if (splitType === 'equal') {
-        const splitAmount = amount / participants.length;
-        participants.forEach(name => {
-            splits[name] = parseFloat(splitAmount.toFixed(2));
-        });
-    } else {
-        let total = 0;
-        participants.forEach(name => {
-            const input = document.getElementById(`split-${name}`);
-            const splitAmount = parseFloat(input.value) || 0;
-            splits[name] = splitAmount;
-            total += splitAmount;
-        });
+    let total = 0;
+    presentParticipants.forEach(name => {
+        const input = document.getElementById(`split-${name}`);
+        const splitAmount = parseFloat(input.value) || 0;
+        splits[name] = splitAmount;
+        total += splitAmount;
+    });
 
-        if (Math.abs(total - amount) > 0.01) {
-            alert('Split amounts must equal the total expense amount');
-            return;
-        }
+    if (Math.abs(total - amount) > 0.01) {
+        alert('Split amounts must equal the total expense amount');
+        return;
     }
 
     showLoading();
@@ -684,8 +664,9 @@ async function updateExpenseRecord(expenseId) {
             Amount: amount,
             Currency: currency,
             PaidBy: paidBy,
+            Participants: JSON.stringify(participants),
+            PresentParticipants: JSON.stringify(presentParticipants),
             Splits: JSON.stringify(splits),
-            Participants: JSON.stringify(participants)
         };
 
         await airtableService.updateRecord(expenseId, updatedFields);
@@ -699,8 +680,9 @@ async function updateExpenseRecord(expenseId) {
                     amount,
                     currency,
                     paidBy,
-                    splits,
-                    participants: [...participants]
+                    participants: [...participants],
+                    presentParticipants: [...presentParticipants],
+                    splits
                 } 
                 : e
         );
@@ -738,7 +720,6 @@ async function deleteExpense(expenseId) {
 
 // Calculate settlements
 function calculateSettlement() {
-    // If no participants or expenses, return empty results
     if (!participants.length || !expenses.length) {
         return {
             settlements: {},
