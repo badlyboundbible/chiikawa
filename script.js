@@ -11,7 +11,6 @@ let expenses = [];
 document.addEventListener('DOMContentLoaded', initialize);
 
 async function initialize() {
-    await loadParticipants();
     await loadExpenses();
     updateUI();
 }
@@ -27,87 +26,60 @@ function getCurrencySymbol(currency) {
 }
 
 // Participants management
-async function addParticipant() {
+function addParticipant() {
     const nameInput = document.getElementById('participantName');
     const name = nameInput.value.trim();
     
     if (!name) return;
-
-    try {
-        const response = await fetch(`${AIRTABLE_URL}/Participants`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                fields: {
-                    Name: name
-                }
-            })
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            participants.push({
-                id: data.id,
-                name: name
-            });
-            nameInput.value = '';
-            updateUI();
-        }
-    } catch (error) {
-        console.error('Error adding participant:', error);
-        alert('Failed to add participant. Please try again.');
+    
+    if (!participants.includes(name)) {
+        participants.push(name);
+        nameInput.value = '';
+        updateUI();
+    } else {
+        alert('This participant has already been added.');
     }
 }
 
-async function loadParticipants() {
-    try {
-        const response = await fetch(`${AIRTABLE_URL}/Participants`, {
-            headers: {
-                'Authorization': `Bearer ${AIRTABLE_TOKEN}`
-            }
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            participants = data.records.map(record => ({
-                id: record.id,
-                name: record.fields.Name
-            }));
-        }
-    } catch (error) {
-        console.error('Error loading participants:', error);
-        alert('Failed to load participants. Please refresh the page.');
-    }
+function updateParticipantsList() {
+    const list = document.getElementById('participantsList');
+    list.innerHTML = participants.map(name => 
+        `<div class="participant-item">${name}</div>`
+    ).join('');
+    
+    // Update the paid by select options
+    const paidBySelect = document.getElementById('paidBy');
+    paidBySelect.innerHTML = participants.map(name =>
+        `<option value="${name}">${name}</option>`
+    ).join('');
 }
 
-// Expenses management
+// Expense management
 async function addExpense() {
     const description = document.getElementById('expenseDescription').value;
     const amount = parseFloat(document.getElementById('expenseAmount').value);
     const currency = document.getElementById('currencySelect').value;
     const paidBy = document.getElementById('paidBy').value;
     const splitType = document.getElementById('splitType').value;
+    const date = new Date().toISOString().split('T')[0]; // Today's date
 
-    if (!description || !amount || !paidBy) {
-        alert('Please fill in all required fields');
+    if (!description || !amount || !paidBy || participants.length === 0) {
+        alert('Please fill in all required fields and add at least one participant');
         return;
     }
 
     let splits = {};
     if (splitType === 'equal') {
         const splitAmount = amount / participants.length;
-        participants.forEach(p => {
-            splits[p.id] = splitAmount;
+        participants.forEach(name => {
+            splits[name] = splitAmount;
         });
     } else {
         let total = 0;
-        participants.forEach(p => {
-            const input = document.getElementById(`split-${p.id}`);
+        participants.forEach(name => {
+            const input = document.getElementById(`split-${name}`);
             const splitAmount = parseFloat(input.value) || 0;
-            splits[p.id] = splitAmount;
+            splits[name] = splitAmount;
             total += splitAmount;
         });
 
@@ -125,28 +97,36 @@ async function addExpense() {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                fields: {
-                    Description: description,
-                    Amount: amount,
-                    Currency: currency,
-                    PaidBy: paidBy,
-                    Splits: JSON.stringify(splits)
-                }
+                records: [{
+                    fields: {
+                        Description: description,
+                        Amount: amount,
+                        Currency: currency,
+                        PaidBy: paidBy,
+                        Participants: JSON.stringify(participants),
+                        Splits: JSON.stringify(splits),
+                        Date: date
+                    }
+                }]
             })
         });
 
         if (response.ok) {
             const data = await response.json();
             expenses.push({
-                id: data.id,
+                id: data.records[0].id,
                 description,
                 amount,
                 currency,
                 paidBy,
-                splits
+                participants: [...participants],
+                splits,
+                date
             });
             clearExpenseForm();
             updateUI();
+        } else {
+            throw new Error('Failed to save expense');
         }
     } catch (error) {
         console.error('Error adding expense:', error);
@@ -170,8 +150,17 @@ async function loadExpenses() {
                 amount: record.fields.Amount,
                 currency: record.fields.Currency,
                 paidBy: record.fields.PaidBy,
-                splits: JSON.parse(record.fields.Splits)
+                participants: JSON.parse(record.fields.Participants),
+                splits: JSON.parse(record.fields.Splits),
+                date: record.fields.Date
             }));
+
+            // Update participants list from loaded expenses
+            const allParticipants = new Set();
+            expenses.forEach(expense => {
+                expense.participants.forEach(p => allParticipants.add(p));
+            });
+            participants = Array.from(allParticipants);
         }
     } catch (error) {
         console.error('Error loading expenses:', error);
@@ -189,47 +178,74 @@ function clearExpenseForm() {
 // UI Updates
 function updateUI() {
     updateParticipantsList();
-    updatePaidBySelect();
     updateExpensesList();
     updateSettlementSummary();
-}
-
-function updateParticipantsList() {
-    const list = document.getElementById('participantsList');
-    list.innerHTML = participants.map(p => 
-        `<div>${p.name}</div>`
-    ).join('');
-}
-
-function updatePaidBySelect() {
-    const select = document.getElementById('paidBy');
-    select.innerHTML = participants.map(p =>
-        `<option value="${p.id}">${p.name}</option>`
-    ).join('');
 }
 
 function updateExpensesList() {
     const list = document.getElementById('expensesList');
     list.innerHTML = expenses.map(e => {
-        const paidBy = participants.find(p => p.id === e.paidBy)?.name;
         return `
             <div class="expense-item">
-                <div>${e.description}</div>
+                <div><strong>${e.description}</strong></div>
                 <div>${getCurrencySymbol(e.currency)}${e.amount.toFixed(2)}</div>
-                <div>Paid by: ${paidBy}</div>
+                <div>Paid by: ${e.paidBy}</div>
+                <div>Date: ${e.date}</div>
             </div>
         `;
     }).join('');
 }
 
+function toggleSplitInputs() {
+    const splitType = document.getElementById('splitType').value;
+    const splitAmounts = document.getElementById('splitAmounts');
+    const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
+    
+    if (splitType === 'manual') {
+        splitAmounts.style.display = 'block';
+        const equalSplit = amount / participants.length;
+        
+        splitAmounts.innerHTML = participants.map(name => `
+            <div>
+                <label>${name}</label>
+                <input type="number" id="split-${name}" 
+                       value="${equalSplit.toFixed(2)}" 
+                       step="0.01"
+                       onchange="updateSplits()">
+            </div>
+        `).join('');
+    } else {
+        splitAmounts.style.display = 'none';
+    }
+}
+
+function updateSplits() {
+    const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
+    let total = 0;
+    
+    // Calculate total of all splits except last participant
+    participants.slice(0, -1).forEach(name => {
+        const input = document.getElementById(`split-${name}`);
+        total += parseFloat(input.value) || 0;
+    });
+
+    // Auto-calculate last participant's amount
+    const lastParticipant = participants[participants.length - 1];
+    if (lastParticipant) {
+        const lastInput = document.getElementById(`split-${lastParticipant}`);
+        lastInput.value = (amount - total).toFixed(2);
+    }
+}
+
+// Settlement calculations
 function calculateSettlement() {
     const balances = {};
     const settlements = {};
     const totals = {};
 
-    // Initialize balances for each currency
-    participants.forEach(p => {
-        balances[p.id] = {
+    // Initialize balances for each participant and currency
+    participants.forEach(name => {
+        balances[name] = {
             GBP: 0,
             EUR: 0,
             HKD: 0
@@ -242,8 +258,8 @@ function calculateSettlement() {
         balances[e.paidBy][e.currency] += e.amount;
 
         // Subtract splits from each participant
-        Object.entries(e.splits).forEach(([participantId, amount]) => {
-            balances[participantId][e.currency] -= amount;
+        Object.entries(e.splits).forEach(([name, amount]) => {
+            balances[name][e.currency] -= amount;
         });
 
         // Update totals
@@ -256,9 +272,9 @@ function calculateSettlement() {
         settlements[currency] = [];
 
         // Get non-zero balances for this currency
-        participants.forEach(p => {
-            if (Math.abs(balances[p.id][currency]) > 0.01) {
-                currencyBalances[p.id] = balances[p.id][currency];
+        participants.forEach(name => {
+            if (Math.abs(balances[name][currency]) > 0.01) {
+                currencyBalances[name] = balances[name][currency];
             }
         });
 
@@ -273,23 +289,23 @@ function calculateSettlement() {
 
             if (debtors.length === 0 || creditors.length === 0) break;
 
-            const [debtorId, debtorBalance] = debtors[0];
-            const [creditorId, creditorBalance] = creditors[0];
+            const [debtorName, debtorBalance] = debtors[0];
+            const [creditorName, creditorBalance] = creditors[0];
 
             const amount = Math.min(-debtorBalance, creditorBalance);
 
             settlements[currency].push({
-                from: participants.find(p => p.id === debtorId).name,
-                to: participants.find(p => p.id === creditorId).name,
+                from: debtorName,
+                to: creditorName,
                 amount: Math.abs(amount)
             });
 
-            currencyBalances[debtorId] += amount;
-            currencyBalances[creditorId] -= amount;
+            currencyBalances[debtorName] += amount;
+            currencyBalances[creditorName] -= amount;
 
             // Remove settled balances
-            if (Math.abs(currencyBalances[debtorId]) < 0.01) delete currencyBalances[debtorId];
-            if (Math.abs(currencyBalances[creditorId]) < 0.01) delete currencyBalances[creditorId];
+            if (Math.abs(currencyBalances[debtorName]) < 0.01) delete currencyBalances[debtorName];
+            if (Math.abs(currencyBalances[creditorName]) < 0.01) delete currencyBalances[creditorName];
         }
     });
 
@@ -312,44 +328,4 @@ function updateSettlementSummary() {
             `<div>${s.from} pays ${s.to} ${getCurrencySymbol(currency)}${s.amount.toFixed(2)}</div>`
         ).join('')
     ).join('');
-}
-
-function toggleSplitInputs() {
-    const splitType = document.getElementById('splitType').value;
-    const splitAmounts = document.getElementById('splitAmounts');
-    const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
-    
-    if (splitType === 'manual') {
-        splitAmounts.style.display = 'block';
-        const equalSplit = amount / participants.length;
-        
-        splitAmounts.innerHTML = participants.map(p => `
-            <div>
-                <label>${p.name}</label>
-                <input type="number" id="split-${p.id}" 
-                       value="${equalSplit.toFixed(2)}" 
-                       step="0.01"
-                       onchange="updateSplits()">
-            </div>
-        `).join('');
-    } else {
-        splitAmounts.style.display = 'none';
-    }
-}
-
-function updateSplits() {
-    const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
-    let total = 0;
-    
-    participants.slice(0, -1).forEach(p => {
-        const input = document.getElementById(`split-${p.id}`);
-        total += parseFloat(input.value) || 0;
-    });
-
-    // Auto-calculate last participant's amount
-    const lastParticipant = participants[participants.length - 1];
-    if (lastParticipant) {
-        const lastInput = document.getElementById(`split-${lastParticipant.id}`);
-        lastInput.value = (amount - total).toFixed(2);
-    }
 }
