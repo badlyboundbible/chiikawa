@@ -865,70 +865,60 @@ function calculateSettlement() {
         }
     });
 
-    // Calculate balances for each expense
+    // Calculate raw balances for each expense
     expenses.forEach(e => {
         if (!e || !e.currency || !e.amount || !e.paidBy || !e.splits) return;
-
-        // Add the full amount to payer's balance (positive means they're owed money)
+        
+        // Add to total for this currency
+        totals[e.currency] = (totals[e.currency] || 0) + e.amount;
+        
+        // Add the full amount to payer's balance
         balances[e.paidBy][e.currency] = (balances[e.paidBy][e.currency] || 0) + e.amount;
 
-        // Subtract what each person owes from their balance
+        // Subtract what each person owes
         Object.entries(e.splits).forEach(([name, amount]) => {
             balances[name][e.currency] = (balances[name][e.currency] || 0) - amount;
         });
-
-        // Update totals for each currency
-        totals[e.currency] = (totals[e.currency] || 0) + e.amount;
     });
 
-    // Calculate settlements for each currency
+    // Calculate netted settlements for each currency
     Object.keys(totals).forEach(currency => {
         settlements[currency] = [];
         const currencyBalances = {};
 
-        // Get non-zero balances for this currency
+        // Get non-zero balances
         participants.forEach(name => {
             if (Math.abs(balances[name][currency]) > 0.01) {
                 currencyBalances[name] = balances[name][currency];
             }
         });
 
-        // Calculate settlements
-        while (Object.keys(currencyBalances).length > 1) {
-            // Find people who owe money (negative balance)
-            const debtors = Object.entries(currencyBalances)
-                .filter(([_, balance]) => balance < 0)
-                .sort((a, b) => a[1] - b[1]); // Biggest debts first
+        // Sort participants by balance
+        const sortedBalances = Object.entries(currencyBalances)
+            .sort((a, b) => a[1] - b[1]); // Sort by balance amount
 
-            // Find people who are owed money (positive balance)
-            const creditors = Object.entries(currencyBalances)
-                .filter(([_, balance]) => balance > 0)
-                .sort((a, b) => b[1] - a[1]); // Biggest credits first
+        // For each pair of participants, calculate the net amount
+        for (let i = 0; i < sortedBalances.length; i++) {
+            for (let j = i + 1; j < sortedBalances.length; j++) {
+                const [name1, balance1] = sortedBalances[i];
+                const [name2, balance2] = sortedBalances[j];
 
-            if (!debtors.length || !creditors.length) break;
-
-            const [debtorName, debtorBalance] = debtors[0];
-            const [creditorName, creditorBalance] = creditors[0];
-
-            // Find the smallest amount between what's owed and what's due
-            const amount = Math.min(-debtorBalance, creditorBalance);
-            const roundedAmount = parseFloat(amount.toFixed(2));
-
-            if (roundedAmount > 0) {
-                settlements[currency].push({
-                    from: debtorName,
-                    to: creditorName,
-                    amount: roundedAmount
-                });
+                // If one owes the other, calculate the net amount
+                if (balance1 < 0 && balance2 > 0) {
+                    const amount = Math.min(-balance1, balance2);
+                    if (amount > 0.01) {
+                        settlements[currency].push({
+                            from: name1,
+                            to: name2,
+                            amount: parseFloat(amount.toFixed(2))
+                        });
+                        
+                        // Update balances
+                        sortedBalances[i][1] += amount;
+                        sortedBalances[j][1] -= amount;
+                    }
+                }
             }
-
-            // Update balances
-            currencyBalances[debtorName] += amount;
-            currencyBalances[creditorName] -= amount;
-
-            // Remove settled balances
-            if (Math.abs(currencyBalances[debtorName]) < 0.01) delete currencyBalances[debtorName];
-            if (Math.abs(currencyBalances[creditorName]) < 0.01) delete currencyBalances[creditorName];
         }
     });
 
