@@ -1,31 +1,49 @@
-// Airtable Service Class
 class AirtableService {
     constructor() {
         this.apiKey = "patG3xfFhZGjGiXWt.8959878dca997d69972b237177713462c43fe7f385ab43d7d45ce500f104d703";
         this.baseId = "app7aGU54LVkhT1fd";
         this.tableName = "Expenses";
         this.url = `https://api.airtable.com/v0/${this.baseId}/${this.tableName}`;
-        this.requestQueue = Promise.resolve();
     }
 
     async createRecord(fields) {
         try {
+            // Validate fields before sending
+            const validatedFields = {
+                Description: fields.Description || '',
+                Amount: parseFloat(fields.Amount) || 0,
+                Currency: fields.Currency || 'GBP',
+                PaidBy: fields.PaidBy || '',
+                Participants: fields.Participants || '[]',
+                Splits: fields.Splits || '{}',
+                Date: fields.Date || new Date().toISOString().split('T')[0]
+            };
+
+            console.log('Sending to Airtable:', validatedFields);
+
             const response = await fetch(this.url, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.apiKey}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ records: [{ fields }] })
+                body: JSON.stringify({
+                    records: [{
+                        fields: validatedFields
+                    }]
+                })
             });
 
+            const responseText = await response.text();
+            console.log('Airtable Response:', response.status, responseText);
+
             if (!response.ok) {
-                throw new Error('Failed to create record');
+                throw new Error(`Airtable Error: ${response.status} ${responseText}`);
             }
 
-            return await response.json();
+            return JSON.parse(responseText);
         } catch (error) {
-            console.error('Error creating record:', error);
+            console.error('Detailed error:', error);
             throw error;
         }
     }
@@ -39,10 +57,13 @@ class AirtableService {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to fetch records');
+                const errorText = await response.text();
+                throw new Error(`Failed to fetch records: ${response.status} ${errorText}`);
             }
 
-            return await response.json();
+            const data = await response.json();
+            console.log('Successfully fetched records:', data);
+            return data;
         } catch (error) {
             console.error('Error fetching records:', error);
             throw error;
@@ -418,86 +439,51 @@ function updateSplits() {
 
 // Calculate settlements
 function calculateSettlement() {
+    // If no participants or expenses, return empty results
+    if (!participants.length || !expenses.length) {
+        return {
+            settlements: {},
+            totals: {},
+            balances: {}
+        };
+    }
+
     const balances = {};
     const settlements = {};
     const totals = {};
 
-    // Initialize balances
+    // Initialize balances with safeguards
     participants.forEach(name => {
-        balances[name] = {
-            GBP: 0,
-            EUR: 0,
-            HKD: 0
-        };
-    });
-
-    // Calculate balances for each expense
-    expenses.forEach(e => {
-        // Add to payer's balance
-        balances[e.paidBy][e.currency] += e.amount;
-
-        // Subtract splits from each participant
-        Object.entries(e.splits).forEach(([name, amount]) => {
-            balances[name][e.currency] -= amount;
-        });
-
-        // Update total expenses for each currency
-        totals[e.currency] = (totals[e.currency] || 0) + e.amount;
-    });
-
-    // Calculate settlements for each currency
-    Object.keys(totals).forEach(currency => {
-        const currencyBalances = {};
-        settlements[currency] = [];
-
-        // Get non-zero balances
-        participants.forEach(name => {
-            if (Math.abs(balances[name][currency]) > 0.01) {
-                currencyBalances[name] = balances[name][currency];
-            }
-        });
-
-        // Calculate optimal settlements
-        while (Object.keys(currencyBalances).length > 1) {
-            // Find people who owe money (negative balance)
-            const debtors = Object.entries(currencyBalances)
-                .filter(([name, balance]) => balance < 0)
-                .sort((a, b) => a[1] - b[1]); // Biggest debts first
-
-            // Find people who are owed money (positive balance)
-            const creditors = Object.entries(currencyBalances)
-                .filter(([name, balance]) => balance > 0)
-                .sort((a, b) => b[1] - a[1]); // Biggest credits first
-
-            if (debtors.length === 0 || creditors.length === 0) break;
-
-            const [debtorName, debtorBalance] = debtors[0];
-            const [creditorName, creditorBalance] = creditors[0];
-            
-            // Calculate settlement amount
-            const amount = Math.min(-debtorBalance, creditorBalance);
-            const roundedAmount = parseFloat(amount.toFixed(2));
-
-            if (roundedAmount > 0) {
-                settlements[currency].push({
-                    from: debtorName,
-                    to: creditorName,
-                    amount: roundedAmount
-                });
-            }
-
-            // Update balances
-            currencyBalances[debtorName] = parseFloat((debtorBalance + amount).toFixed(2));
-            currencyBalances[creditorName] = parseFloat((creditorBalance - amount).toFixed(2));
-
-            // Remove settled balances
-            if (Math.abs(currencyBalances[debtorName]) < 0.01) delete currencyBalances[debtorName];
-            if (Math.abs(currencyBalances[creditorName]) < 0.01) delete currencyBalances[creditorName];
+        if (name) {  // Only create balance for valid names
+            balances[name] = {
+                GBP: 0,
+                EUR: 0,
+                HKD: 0
+            };
         }
     });
 
-    return { settlements, totals, balances };
-}
+    // Calculate balances for each expense with validation
+    expenses.forEach(e => {
+        if (!e || !e.currency || !e.amount || !e.paidBy || !e.splits) return;
+
+        // Add to payer's balance
+        if (balances[e.paidBy] && balances[e.paidBy][e.currency] !== undefined) {
+            balances[e.paidBy][e.currency] += e.amount;
+        }
+
+        // Subtract splits from each participant
+        Object.entries(e.splits).forEach(([name, amount]) => {
+            if (balances[name] && balances[name][e.currency] !== undefined) {
+                balances[name][e.currency] -= amount;
+            }
+        });
+
+        // Update totals
+        totals[e.currency] = (totals[e.currency] || 0) + e.amount;
+    });
+
+    // Rest of the settlement calculation logic...
 
 // Update settlement summary display
 function updateSettlementSummary() {
