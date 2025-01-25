@@ -9,6 +9,9 @@ class AirtableService {
 
     async createRecord(fields) {
         try {
+            // Log the data we're about to send
+            console.log('Sending to Airtable:', fields);
+
             const response = await fetch(this.url, {
                 method: 'POST',
                 headers: {
@@ -17,18 +20,33 @@ class AirtableService {
                 },
                 body: JSON.stringify({
                     records: [{
-                        fields: fields
+                        fields: {
+                            // Ensure field names match exactly what's in Airtable
+                            Description: fields.Description || '',
+                            Amount: Number(fields.Amount) || 0,
+                            Currency: fields.Currency || 'GBP',
+                            PaidBy: fields.PaidBy || '',
+                            Date: fields.Date || new Date().toISOString().split('T')[0],
+                            Splits: fields.Splits || '{}',
+                            Participants: fields.Participants || '[]'
+                        }
                     }]
                 })
             });
 
+            // Log the response status
+            console.log('Airtable response status:', response.status);
+
+            const responseText = await response.text();
+            console.log('Airtable response:', responseText);
+
             if (!response.ok) {
-                throw new Error('Failed to create record');
+                throw new Error(`Failed to create record: ${response.status} - ${responseText}`);
             }
 
-            return await response.json();
+            return JSON.parse(responseText);
         } catch (error) {
-            console.error('Error creating record:', error);
+            console.error('Detailed error creating record:', error);
             throw error;
         }
     }
@@ -42,10 +60,13 @@ class AirtableService {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to fetch records');
+                const errorText = await response.text();
+                throw new Error(`Failed to fetch records: ${response.status} - ${errorText}`);
             }
 
-            return await response.json();
+            const data = await response.json();
+            console.log('Successfully fetched records:', data);
+            return data;
         } catch (error) {
             console.error('Error fetching records:', error);
             throw error;
@@ -62,7 +83,8 @@ class AirtableService {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to delete record');
+                const errorText = await response.text();
+                throw new Error(`Failed to delete record: ${response.status} - ${errorText}`);
             }
 
             return await response.json();
@@ -81,12 +103,21 @@ class AirtableService {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    fields: fields
+                    fields: {
+                        Description: fields.Description || '',
+                        Amount: Number(fields.Amount) || 0,
+                        Currency: fields.Currency || 'GBP',
+                        PaidBy: fields.PaidBy || '',
+                        Date: fields.Date || new Date().toISOString().split('T')[0],
+                        Splits: fields.Splits || '{}',
+                        Participants: fields.Participants || '[]'
+                    }
                 })
             });
 
             if (!response.ok) {
-                throw new Error('Failed to update record');
+                const errorText = await response.text();
+                throw new Error(`Failed to update record: ${response.status} - ${errorText}`);
             }
 
             return await response.json();
