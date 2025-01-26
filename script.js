@@ -869,25 +869,31 @@ function calculateSettlement() {
         }
     });
 
-    // Calculate balances for each expense individually
+    // Calculate balances for each expense
     expenses.forEach(expense => {
-        if (!expense || !expense.currency || !expense.amount || !expense.paidBy || !expense.splits) return;
+        if (!expense || !expense.currency || !expense.amount || !expense.paidBy) return;
 
         const currency = expense.currency;
         const paidBy = expense.paidBy;
+        const presentParticipants = expense.presentParticipants || [];
 
-        // Update total for this currency
-        totals[currency] = (totals[currency] || 0) + expense.amount;
+        // Skip if no split information or not marked as present
+        if (!expense.splits || !presentParticipants.includes(paidBy)) return;
 
-        // For each split, calculate what each person owes to the payer
+        // Only process splits for participants who were present
         Object.entries(expense.splits).forEach(([name, amount]) => {
-            if (name !== paidBy) { // Skip if it's the payer's own share
-                // Person owes money to the payer
-                balances[name][currency] = (balances[name][currency] || 0) - amount;
-                // Payer gets money from this person
-                balances[paidBy][currency] = (balances[paidBy][currency] || 0) + amount;
+            if (presentParticipants.includes(name)) {
+                if (name !== paidBy) {
+                    // Person owes money to the payer
+                    balances[name][currency] = (balances[name][currency] || 0) - amount;
+                    // Payer gets money from this person
+                    balances[paidBy][currency] = (balances[paidBy][currency] || 0) + amount;
+                }
             }
         });
+
+        // Update totals
+        totals[currency] = (totals[currency] || 0) + expense.amount;
     });
 
     // Create settlements for each currency
@@ -908,35 +914,33 @@ function calculateSettlement() {
             }
         });
 
-        // Sort both arrays by amount (largest first)
+        // Sort by amount (largest first)
         debtors.sort((a, b) => b[1] - a[1]);
         creditors.sort((a, b) => b[1] - a[1]);
 
-        // Match debtors with creditors
-        debtors.forEach(([debtorName, debtAmount]) => {
-            let remainingDebt = debtAmount;
+        // Create settlements
+        while (debtors.length > 0 && creditors.length > 0) {
+            const [debtorName, debtAmount] = debtors[0];
+            const [creditorName, creditAmount] = creditors[0];
+            
+            const amount = Math.min(debtAmount, creditAmount);
+            const roundedAmount = parseFloat(amount.toFixed(2));
 
-            while (remainingDebt > 0.01 && creditors.length > 0) {
-                const [creditorName, creditAmount] = creditors[0];
-                const transferAmount = Math.min(remainingDebt, creditAmount);
-
-                if (transferAmount > 0.01) {
-                    settlements[currency].push({
-                        from: debtorName,
-                        to: creditorName,
-                        amount: parseFloat(transferAmount.toFixed(2))
-                    });
-
-                    remainingDebt -= transferAmount;
-                    creditors[0][1] -= transferAmount;
-
-                    // Remove creditor if they've been fully paid
-                    if (creditors[0][1] < 0.01) {
-                        creditors.shift();
-                    }
-                }
+            if (roundedAmount > 0.01) {
+                settlements[currency].push({
+                    from: debtorName,
+                    to: creditorName,
+                    amount: roundedAmount
+                });
             }
-        });
+
+            // Update amounts
+            if (debtAmount - amount < 0.01) debtors.shift();
+            else debtors[0][1] = debtAmount - amount;
+
+            if (creditAmount - amount < 0.01) creditors.shift();
+            else creditors[0][1] = creditAmount - amount;
+        }
     });
 
     return { settlements, totals, balances };
