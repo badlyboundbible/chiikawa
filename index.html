@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Splitter</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:,">
+</head>
+<body>
+    <div class="container">
+        <!-- Participants Section -->
+        <div class="card">
+            <h2>Add Participants</h2>
+            <div class="form-group">
+                <input type="text" id="participantName" placeholder="Enter participant name">
+                <button id="addParticipantBtn">Add Participant</button>
+            </div>
+            <div class="participants-list" id="participantsList"></div>
+        </div>
+
+        <!-- Add/Edit Expense Section -->
+        <div class="card">
+            <h2 id="expenseFormTitle">Add Expense</h2>
+            <div class="form-group">
+                <label>Description:</label>
+                <input type="text" id="expenseDescription" placeholder="What was this expense for?">
+                
+                <label>Amount:</label>
+                <input type="number" id="expenseAmount" step="0.01" placeholder="0.00">
+                
+                <label>Currency:</label>
+                <select id="currencySelect">
+                    <option value="GBP">GBP (£)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="HKD">HKD ($)</option>
+                </select>
+                
+                <label>Paid By:</label>
+                <select id="paidBy">
+                    <option value="">Select who paid</option>
+                </select>
+
+                <!-- Add this after the "Paid By" select -->
+                <label>Present Participants:</label>
+                <div class="participants-checkbox">
+                <div id="presentParticipants" class="checkbox-group"></div>
+                </div>
+                
+                <label>Split Type:</label>
+                <select id="splitType">
+                    <option value="equal">Split Equally</option>
+                    <option value="manual">Split Manually</option>
+                </select>
+                
+                <div id="splitAmounts" class="split-amounts" style="display: none;"></div>
+            </div>
+            <div class="button-group">
+                <button id="addExpenseBtn" class="primary-btn">Add Expense</button>
+                <button id="cancelEditBtn" class="cancel-btn" style="display: none;">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Expenses List -->
+        <div class="card">
+            <h2>Expenses List</h2>
+            <div class="expenses-list" id="expensesList">
+                <div class="empty-state">No expenses added yet</div>
+            </div>
+        </div>
+
+        <!-- Settlement Summary -->
+        <div class="card">
+            <h2>Settlement Summary</h2>
+            <div class="currency-totals" id="currencyTotals"></div>
+            <div class="settlement-summary" id="settlementSummary"></div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content">
+            <h3>Confirm Delete</h3>
+            <p>Are you sure you want to delete this expense?</p>
+            <div class="modal-buttons">
+                <button id="confirmDelete" class="delete-btn">Delete</button>
+                <button id="cancelDelete" class="cancel-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="loading-spinner" style="display: none;">
+        <div class="spinner"></div>
+        <div class="loading-text">Processing...</div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
