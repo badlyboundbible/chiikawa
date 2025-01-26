@@ -9,9 +9,6 @@ class AirtableService {
 
     async createRecord(fields) {
         try {
-            // Log the data we're about to send
-            console.log('Sending to Airtable:', fields);
-
             const response = await fetch(this.url, {
                 method: 'POST',
                 headers: {
@@ -20,33 +17,18 @@ class AirtableService {
                 },
                 body: JSON.stringify({
                     records: [{
-                        fields: {
-                            // Ensure field names match exactly what's in Airtable
-                            Description: fields.Description || '',
-                            Amount: Number(fields.Amount) || 0,
-                            Currency: fields.Currency || 'GBP',
-                            PaidBy: fields.PaidBy || '',
-                            Date: fields.Date || new Date().toISOString().split('T')[0],
-                            Splits: fields.Splits || '{}',
-                            Participants: fields.Participants || '[]'
-                        }
+                        fields: fields
                     }]
                 })
             });
 
-            // Log the response status
-            console.log('Airtable response status:', response.status);
-
-            const responseText = await response.text();
-            console.log('Airtable response:', responseText);
-
             if (!response.ok) {
-                throw new Error(`Failed to create record: ${response.status} - ${responseText}`);
+                throw new Error('Failed to create record');
             }
 
-            return JSON.parse(responseText);
+            return await response.json();
         } catch (error) {
-            console.error('Detailed error creating record:', error);
+            console.error('Error creating record:', error);
             throw error;
         }
     }
@@ -60,13 +42,10 @@ class AirtableService {
             });
 
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch records: ${response.status} - ${errorText}`);
+                throw new Error('Failed to fetch records');
             }
 
-            const data = await response.json();
-            console.log('Successfully fetched records:', data);
-            return data;
+            return await response.json();
         } catch (error) {
             console.error('Error fetching records:', error);
             throw error;
@@ -83,8 +62,7 @@ class AirtableService {
             });
 
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to delete record: ${response.status} - ${errorText}`);
+                throw new Error('Failed to delete record');
             }
 
             return await response.json();
@@ -103,21 +81,12 @@ class AirtableService {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    fields: {
-                        Description: fields.Description || '',
-                        Amount: Number(fields.Amount) || 0,
-                        Currency: fields.Currency || 'GBP',
-                        PaidBy: fields.PaidBy || '',
-                        Date: fields.Date || new Date().toISOString().split('T')[0],
-                        Splits: fields.Splits || '{}',
-                        Participants: fields.Participants || '[]'
-                    }
+                    fields: fields
                 })
             });
 
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to update record: ${response.status} - ${errorText}`);
+                throw new Error('Failed to update record');
             }
 
             return await response.json();
@@ -159,6 +128,21 @@ document.addEventListener('DOMContentLoaded', function() {
     initialize();
 });
 
+// Utility Functions
+function getCurrencySymbol(currency) {
+    const symbols = {
+        'GBP': '£',
+        'EUR': '€',
+        'HKD': '$'
+    };
+    return symbols[currency] || currency;
+}
+
+function formatDate(dateString) {
+    const options = { year: 'numeric', month: 'short', day: 'numeric' };
+    return new Date(dateString).toLocaleDateString(undefined, options);
+}
+
 // Loading spinner functions
 function initializeLoadingSpinner() {
     window.showLoading = function() {
@@ -184,17 +168,7 @@ async function initialize() {
     }
 }
 
-// Currency utility functions
-function getCurrencySymbol(currency) {
-    const symbols = {
-        'GBP': '£',
-        'EUR': '€',
-        'HKD': '$'
-    };
-    return symbols[currency] || currency;
-}
-
-// Participant management
+// Participant Management
 function addParticipant() {
     const nameInput = document.getElementById('participantName');
     const name = nameInput.value.trim();
@@ -212,32 +186,50 @@ function addParticipant() {
     participants.push(name);
     nameInput.value = '';
     updateUI();
-    updatePresentParticipants(); // Update checkboxes when adding new participant
+    updatePresentParticipants();
 }
 
-// Update present participants checkboxes
+function removeParticipant(name) {
+    if (expenses.length > 0) {
+        alert('Cannot remove participants once expenses have been added');
+        return;
+    }
+    participants = participants.filter(p => p !== name);
+    updateUI();
+    updatePresentParticipants();
+}
+
 function updatePresentParticipants() {
     const container = document.getElementById('presentParticipants');
+    if (!container) return;
+
     container.innerHTML = participants.map(name => `
         <div class="checkbox-item">
             <input type="checkbox" 
                    id="present-${name}" 
                    value="${name}" 
                    checked
-                   onchange="updateSplitAmounts()">
+                   onchange="handlePresentParticipantChange()">
             <label for="present-${name}">${name}</label>
         </div>
     `).join('');
 }
 
-// Get present participants
-function getPresentParticipants() {
-    return participants.filter(name => 
-        document.getElementById(`present-${name}`)?.checked
-    );
+function handlePresentParticipantChange() {
+    const splitType = document.getElementById('splitType').value;
+    if (splitType === 'manual') {
+        toggleSplitInputs();
+    }
 }
 
-// Load expenses from Airtable
+function getPresentParticipants() {
+    return participants.filter(name => {
+        const checkbox = document.getElementById(`present-${name}`);
+        return checkbox && checkbox.checked;
+    });
+}
+
+// Expense Management
 async function loadExpenses() {
     try {
         const data = await airtableService.getAllRecords();
@@ -263,7 +255,6 @@ async function loadExpenses() {
                 }
             });
             participants = Array.from(allParticipants);
-            updatePresentParticipants(); // Initialize checkboxes after loading
         }
     } catch (error) {
         console.error('Error loading expenses:', error);
@@ -271,7 +262,6 @@ async function loadExpenses() {
     }
 }
 
-// Add new expense
 async function addExpense() {
     const description = document.getElementById('expenseDescription').value.trim();
     const amount = parseFloat(document.getElementById('expenseAmount').value);
@@ -279,6 +269,7 @@ async function addExpense() {
     const paidBy = document.getElementById('paidBy').value;
     const splitType = document.getElementById('splitType').value;
     const date = new Date().toISOString().split('T')[0];
+    const presentParticipants = getPresentParticipants();
 
     // Validation
     if (!description) {
@@ -293,8 +284,6 @@ async function addExpense() {
         alert('Please select who paid');
         return;
     }
-
-    const presentParticipants = getPresentParticipants();
     if (presentParticipants.length === 0) {
         alert('Please select at least one present participant');
         return;
@@ -320,7 +309,7 @@ async function addExpense() {
             const input = document.getElementById(`split-${name}`);
             const splitAmount = parseFloat(input.value) || 0;
             splits[name] = parseFloat(splitAmount.toFixed(2));
-            total += splitAmount;
+            total += splits[name];
         });
 
         if (Math.abs(total - amount) > 0.01) {
@@ -331,7 +320,6 @@ async function addExpense() {
 
     showLoading();
     try {
-        // Create the record in Airtable
         const record = {
             Description: description,
             Amount: amount,
@@ -345,7 +333,6 @@ async function addExpense() {
 
         const response = await airtableService.createRecord(record);
         
-        // Add to local expenses array
         expenses.push({
             id: response.records[0].id,
             description,
@@ -369,7 +356,7 @@ async function addExpense() {
     }
 }
 
-// Clear the expense form
+// Clear expense form
 function clearExpenseForm() {
     document.getElementById('expenseDescription').value = '';
     document.getElementById('expenseAmount').value = '';
@@ -381,130 +368,15 @@ function clearExpenseForm() {
     // Reset present participants
     updatePresentParticipants();
 
-    // Update form title
+    // Update form title and hide cancel button
     document.getElementById('expenseFormTitle').textContent = 'Add Expense';
-
-    // Hide cancel button if it exists
     const cancelBtn = document.getElementById('cancelEditBtn');
     if (cancelBtn) {
         cancelBtn.style.display = 'none';
     }
 }
 
-// Remove a participant
-function removeParticipant(name) {
-    if (expenses.length > 0) {
-        alert('Cannot remove participants once expenses have been added');
-        return;
-    }
-    participants = participants.filter(p => p !== name);
-    updateUI();
-    updatePresentParticipants(); // Update checkboxes after removing participant
-}
-
-// Update all UI elements
-function updateUI() {
-    updateParticipantsList();
-    updateExpensesList();
-    updateSettlementSummary();
-}
-
-// Update participants list
-function updateParticipantsList() {
-    const list = document.getElementById('participantsList');
-    const paidBySelect = document.getElementById('paidBy');
-    
-    // Update participants list
-    if (participants.length === 0) {
-        list.innerHTML = '<div class="empty-state">No participants added yet</div>';
-    } else {
-        list.innerHTML = participants.map(name => 
-            `<div class="participant-item">
-                ${name}
-                <button onclick="removeParticipant('${name}')" class="delete-btn">
-                    <span class="material-icons">person_remove</span>
-                </button>
-            </div>`
-        ).join('');
-    }
-    
-    // Update paid by select options
-    paidBySelect.innerHTML = '<option value="">Select who paid</option>' + 
-        participants.map(name =>
-            `<option value="${name}">${name}</option>`
-        ).join('');
-}
-
-// Update expenses list
-function updateExpensesList() {
-    const list = document.getElementById('expensesList');
-    
-    if (!expenses || expenses.length === 0) {
-        list.innerHTML = '<div class="empty-state">No expenses added yet</div>';
-        return;
-    }
-    
-    // Sort expenses by date, newest first
-    const sortedExpenses = [...expenses].sort((a, b) => 
-        new Date(b.date || '') - new Date(a.date || '')
-    );
-
-    list.innerHTML = sortedExpenses.map(e => {
-        try {
-            if (!e || typeof e.amount !== 'number') {
-                console.error('Invalid expense record:', e);
-                return '';
-            }
-
-            // Format splits display with present participants highlighted
-            const splitsDisplay = Object.entries(e.splits || {})
-                .map(([name, amount]) => {
-                    const splitAmount = parseFloat(amount) || 0;
-                    const isPresent = e.presentParticipants?.includes(name);
-                    return `<div class="split-item ${isPresent ? 'present' : 'not-present'}">
-                        <span class="split-name">${name}:</span> 
-                        <span class="split-amount">${getCurrencySymbol(e.currency)}${splitAmount.toFixed(2)}</span>
-                    </div>`;
-                })
-                .join('');
-
-            // Format present participants list
-            const presentList = e.presentParticipants?.length 
-                ? `<div class="present-participants">Present: ${e.presentParticipants.join(', ')}</div>` 
-                : '';
-
-            return `
-                <div class="expense-item" data-expense-id="${e.id}">
-                    <div class="expense-actions">
-                        <button class="edit-btn" onclick="editExpense('${e.id}')">
-                            <span class="material-icons">edit</span>
-                        </button>
-                        <button class="delete-btn" onclick="deleteExpense('${e.id}')">
-                            <span class="material-icons">delete</span>
-                        </button>
-                    </div>
-                    <div class="expense-header">
-                        <strong class="expense-description">${e.description || 'No description'}</strong>
-                        <span class="expense-date">${formatDate(e.date || new Date())}</span>
-                    </div>
-                    <div class="expense-amount">
-                        ${getCurrencySymbol(e.currency)}${e.amount.toFixed(2)}
-                    </div>
-                    <div class="expense-paid-by">Paid by: ${e.paidBy || 'Unknown'}</div>
-                    ${presentList}
-                    <div class="expense-splits">
-                        <div class="splits-grid">${splitsDisplay}</div>
-                    </div>
-                </div>
-            `;
-        } catch (error) {
-            console.error('Error rendering expense:', error, e);
-            return '';
-        }
-    }).filter(html => html).join('');
-}
-
-// Handle split type toggle
+// Split management
 function toggleSplitInputs() {
     const splitType = document.getElementById('splitType').value;
     const splitAmounts = document.getElementById('splitAmounts');
@@ -532,7 +404,7 @@ function toggleSplitInputs() {
                                id="split-${name}" 
                                value="${isPresent ? equalSplit.toFixed(2) : '0.00'}" 
                                step="0.01" 
-                               onchange="updateSplitAmounts()"
+                               onchange="updateSplits()"
                                ${!isPresent ? 'disabled' : ''}>
                     </div>
                 </div>
@@ -541,11 +413,10 @@ function toggleSplitInputs() {
     } else {
         splitAmounts.style.display = 'none';
     }
-    updateSplitAmounts();
+    updateSplits();
 }
 
-// Update split amounts
-function updateSplitAmounts() {
+function updateSplits() {
     const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
     const presentParticipants = getPresentParticipants();
     const splitType = document.getElementById('splitType').value;
@@ -584,41 +455,135 @@ function updateSplitAmounts() {
         }
     }
 
-    // Disable inputs for non-present participants and set their values to 0
+    // Set non-present participants to 0
     participants.forEach(name => {
-        const input = document.getElementById(`split-${name}`);
-        if (input && !presentParticipants.includes(name)) {
-            input.value = '0.00';
-            input.disabled = true;
+        if (!presentParticipants.includes(name)) {
+            const input = document.getElementById(`split-${name}`);
+            if (input) {
+                input.value = '0.00';
+                input.disabled = true;
+            }
         }
     });
 }
 
-// Update settlement summary display
+// UI Updates
+function updateUI() {
+    updateParticipantsList();
+    updateExpensesList();
+    updateSettlementSummary();
+}
+
+function updateParticipantsList() {
+    const list = document.getElementById('participantsList');
+    const paidBySelect = document.getElementById('paidBy');
+    
+    // Update participants list
+    if (participants.length === 0) {
+        list.innerHTML = '<div class="empty-state">No participants added yet</div>';
+    } else {
+        list.innerHTML = participants.map(name => 
+            `<div class="participant-item">
+                ${name}
+                <button onclick="removeParticipant('${name}')" class="delete-btn">
+                    <span class="material-icons">person_remove</span>
+                </button>
+            </div>`
+        ).join('');
+    }
+    
+    // Update paid by select options
+    paidBySelect.innerHTML = '<option value="">Select who paid</option>' + 
+        participants.map(name =>
+            `<option value="${name}">${name}</option>`
+        ).join('');
+}
+
+function updateExpensesList() {
+    const list = document.getElementById('expensesList');
+    
+    if (!expenses || expenses.length === 0) {
+        list.innerHTML = '<div class="empty-state">No expenses added yet</div>';
+        return;
+    }
+    
+    // Sort expenses by date, newest first
+    const sortedExpenses = [...expenses].sort((a, b) => 
+        new Date(b.date || '') - new Date(a.date || '')
+    );
+
+    list.innerHTML = sortedExpenses.map(e => {
+        try {
+            if (!e || typeof e.amount !== 'number') {
+                console.error('Invalid expense record:', e);
+                return '';
+            }
+
+            // Format splits for display
+            const splitsDisplay = Object.entries(e.splits || {})
+                .map(([name, amount]) => {
+                    if (amount > 0) {
+                        return `<div class="split-item">
+                            <span class="split-name">${name}:</span> 
+                            <span class="split-amount">${getCurrencySymbol(e.currency)}${amount.toFixed(2)}</span>
+                        </div>`;
+                    }
+                    return '';
+                })
+                .filter(item => item)
+                .join('');
+
+            return `
+                <div class="expense-item">
+                    <div class="expense-header">
+                        <strong class="expense-description">${e.description || 'No description'}</strong>
+                        <span class="expense-date">${formatDate(e.date || new Date())}</span>
+                    </div>
+                    <div class="expense-amount">
+                        ${getCurrencySymbol(e.currency)}${e.amount.toFixed(2)}
+                    </div>
+                    <div class="expense-paid-by">Paid by: ${e.paidBy || 'Unknown'}</div>
+                    <div class="expense-splits">
+                        <div class="splits-grid">${splitsDisplay}</div>
+                    </div>
+                </div>
+            `;
+        } catch (error) {
+            console.error('Error rendering expense:', error, e);
+            return '';
+        }
+    }).filter(html => html).join('');
+}
+
 function updateSettlementSummary() {
     const summary = calculateSettlement();
     const summaryDiv = document.getElementById('settlementSummary');
     let settlementHtml = '';
 
-    // Group settlements by participant and currency
-    participants.forEach(person => {
-        const personSettlements = {
-            EUR: { pay: [], receive: [] },
-            GBP: { pay: [], receive: [] },
-            HKD: { pay: [], receive: [] }
+    // Group settlements by participant
+    participants.forEach(participant => {
+        let participantSettlements = {
+            outgoing: {}, // What they need to pay
+            incoming: {}  // What they will receive
         };
 
-        // Collect all settlements for this person
+        // Collect all settlements for this participant
         Object.entries(summary.settlements).forEach(([currency, settlements]) => {
             settlements.forEach(s => {
-                if (s.from === person) {
-                    personSettlements[currency].pay.push({
+                if (s.from === participant) {
+                    if (!participantSettlements.outgoing[currency]) {
+                        participantSettlements.outgoing[currency] = [];
+                    }
+                    participantSettlements.outgoing[currency].push({
                         person: s.to,
                         amount: s.amount
                     });
                 }
-                if (s.to === person) {
-                    personSettlements[currency].receive.push({
+                if (s.to === participant) {
+                    if (!participantSettlements.incoming[currency]) {
+                        participantSettlements.incoming[currency] = [];
+                    }
+                    participantSettlements.incoming[currency].push({
                         person: s.from,
                         amount: s.amount
                     });
@@ -627,41 +592,51 @@ function updateSettlementSummary() {
         });
 
         // Only show this person's section if they have settlements
-        const hasSettlements = Object.values(personSettlements).some(
-            curr => curr.pay.length > 0 || curr.receive.length > 0
-        );
+        const hasSettlements = Object.keys(participantSettlements.outgoing).length > 0 || 
+                             Object.keys(participantSettlements.incoming).length > 0;
 
         if (hasSettlements) {
             settlementHtml += `
                 <div class="settlement-section">
-                    <h3>${person}'s Settlements</h3>
+                    <h3>${participant}'s Settlements</h3>
                     <div class="settlement-tables">`;
 
-            // Show settlements for each currency if they exist
-            ['EUR', 'GBP', 'HKD'].forEach(currency => {
-                const currencyData = personSettlements[currency];
-                if (currencyData.pay.length > 0 || currencyData.receive.length > 0) {
+            // Outgoing payments (what they need to pay)
+            Object.entries(participantSettlements.outgoing).forEach(([currency, payments]) => {
+                if (payments.length > 0) {
                     settlementHtml += `
                         <div class="currency-group">
-                            <h4>${currency} Settlements</h4>
+                            <h4>Pay (${currency})</h4>
                             <table class="settlement-table">
                                 <tbody>`;
                     
-                    // Outgoing payments
-                    currencyData.pay.forEach(payment => {
+                    payments.forEach(payment => {
                         settlementHtml += `
                             <tr class="payment-row">
-                                <td class="direction">Pay:</td>
                                 <td class="person">${payment.person}</td>
                                 <td class="amount">${getCurrencySymbol(currency)}${payment.amount.toFixed(2)}</td>
                             </tr>`;
                     });
 
-                    // Incoming payments
-                    currencyData.receive.forEach(payment => {
+                    settlementHtml += `
+                                </tbody>
+                            </table>
+                        </div>`;
+                }
+            });
+
+            // Incoming payments (what they will receive)
+            Object.entries(participantSettlements.incoming).forEach(([currency, payments]) => {
+                if (payments.length > 0) {
+                    settlementHtml += `
+                        <div class="currency-group">
+                            <h4>Receive (${currency})</h4>
+                            <table class="settlement-table">
+                                <tbody>`;
+                    
+                    payments.forEach(payment => {
                         settlementHtml += `
                             <tr class="receive-row">
-                                <td class="direction">Receive from:</td>
                                 <td class="person">${payment.person}</td>
                                 <td class="amount">${getCurrencySymbol(currency)}${payment.amount.toFixed(2)}</td>
                             </tr>`;
@@ -680,172 +655,22 @@ function updateSettlementSummary() {
         }
     });
 
-// Format date for display
-function formatDate(dateString) {
-    const options = { year: 'numeric', month: 'short', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    summaryDiv.innerHTML = settlementHtml || '<div class="empty-state">All settled up!</div>';
 }
 
-// Edit expense
-function editExpense(expenseId) {
-    const expense = expenses.find(e => e.id === expenseId);
-    if (!expense) return;
-
-    // Set current edit ID
-    currentEditId = expenseId;
-
-    // Update form title and button
-    document.getElementById('expenseFormTitle').textContent = 'Edit Expense';
-    const addButton = document.getElementById('addExpenseBtn');
-    addButton.textContent = 'Update Expense';
-
-    // Show cancel button
-    const cancelButton = document.getElementById('cancelEditBtn');
-    cancelButton.style.display = 'inline-block';
-    cancelButton.onclick = cancelEdit;
-
-    // Fill the form with expense details
-    document.getElementById('expenseDescription').value = expense.description;
-    document.getElementById('expenseAmount').value = expense.amount;
-    document.getElementById('currencySelect').value = expense.currency;
-    document.getElementById('paidBy').value = expense.paidBy;
-
-    // Update present participants checkboxes
-    updatePresentParticipants();
-    expense.presentParticipants?.forEach(name => {
-        const checkbox = document.getElementById(`present-${name}`);
-        if (checkbox) {
-            checkbox.checked = true;
-        }
-    });
-
-    // Show split amounts
-    document.getElementById('splitType').value = 'manual';
-    toggleSplitInputs();
-    Object.entries(expense.splits).forEach(([name, amount]) => {
-        const input = document.getElementById(`split-${name}`);
-        if (input) {
-            input.value = amount;
-            input.disabled = !expense.presentParticipants?.includes(name);
-        }
-    });
-
-    // Scroll to form
-    document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
-}
-
-// Cancel editing
-function cancelEdit() {
-    clearExpenseForm();
-    updateUI();
-}
-
-// Update expense record
-async function updateExpenseRecord(expenseId) {
-    const description = document.getElementById('expenseDescription').value.trim();
-    const amount = parseFloat(document.getElementById('expenseAmount').value);
-    const currency = document.getElementById('currencySelect').value;
-    const paidBy = document.getElementById('paidBy').value;
-    const presentParticipants = getPresentParticipants();
-
-    // Validation
-    if (!description || !amount || !paidBy) {
-        alert('Please fill in all required fields');
-        return;
-    }
-
-    if (presentParticipants.length === 0) {
-        alert('Please select at least one present participant');
-        return;
-    }
-
-    // Calculate splits
-    let splits = {};
-    let total = 0;
-    presentParticipants.forEach(name => {
-        const input = document.getElementById(`split-${name}`);
-        const splitAmount = parseFloat(input.value) || 0;
-        splits[name] = splitAmount;
-        total += splitAmount;
-    });
-
-    if (Math.abs(total - amount) > 0.01) {
-        alert('Split amounts must equal the total expense amount');
-        return;
-    }
-
-    showLoading();
-    try {
-        const updatedFields = {
-            Description: description,
-            Amount: amount,
-            Currency: currency,
-            PaidBy: paidBy,
-            Participants: JSON.stringify(participants),
-            PresentParticipants: JSON.stringify(presentParticipants),
-            Splits: JSON.stringify(splits),
-        };
-
-        await airtableService.updateRecord(expenseId, updatedFields);
-        
-        // Update local state
-        expenses = expenses.map(e => 
-            e.id === expenseId 
-                ? { 
-                    ...e, 
-                    description,
-                    amount,
-                    currency,
-                    paidBy,
-                    participants: [...participants],
-                    presentParticipants: [...presentParticipants],
-                    splits
-                } 
-                : e
-        );
-
-        clearExpenseForm();
-        updateUI();
-        alert('Expense updated successfully');
-    } catch (error) {
-        console.error('Error updating expense:', error);
-        alert('Failed to update expense. Please try again.');
-    } finally {
-        hideLoading();
-    }
-}
-
-// Delete expense
-async function deleteExpense(expenseId) {
-    if (!confirm('Are you sure you want to delete this expense?')) {
-        return;
-    }
-
-    showLoading();
-    try {
-        await airtableService.deleteRecord(expenseId);
-        expenses = expenses.filter(e => e.id !== expenseId);
-        updateUI();
-        alert('Expense deleted successfully');
-    } catch (error) {
-        console.error('Error deleting expense:', error);
-        alert('Failed to delete expense. Please try again.');
-    } finally {
-        hideLoading();
-    }
-}
-
-// Calculate settlements
+// Settlement calculations
 function calculateSettlement() {
     if (!participants.length || !expenses.length) {
-        return { settlements: {}, totals: {}, balances: {} };
+        return {
+            settlements: {},
+            balances: {}
+        };
     }
 
     const balances = {};
     const settlements = {};
-    const totals = {};
 
-    // Initialize balances for each participant and currency
+    // Initialize balances
     participants.forEach(name => {
         balances[name] = {
             GBP: 0,
@@ -854,60 +679,56 @@ function calculateSettlement() {
         };
     });
 
-    // First, calculate the net amount each person owes/is owed for each expense
+    // Calculate balances for each expense
     expenses.forEach(expense => {
         const { currency, amount, paidBy, splits, presentParticipants } = expense;
         
         if (!currency || !amount || !paidBy || !splits || !presentParticipants) return;
-        
-        // Add to total expenses in this currency
-        totals[currency] = (totals[currency] || 0) + amount;
 
         // Only handle splits between people who were present
-        presentParticipants.forEach(participant => {
-            if (participant === paidBy) {
-                // The payer's balance increases by what others owe them
-                const othersOwe = Object.entries(splits)
-                    .filter(([name, _]) => name !== paidBy && presentParticipants.includes(name))
-                    .reduce((sum, [_, amount]) => sum + amount, 0);
-                balances[paidBy][currency] = (balances[paidBy][currency] || 0) + othersOwe;
-            } else {
-                // Others owe their share to the payer
-                const share = splits[participant] || 0;
-                balances[participant][currency] = (balances[participant][currency] || 0) - share;
+        Object.entries(splits).forEach(([name, splitAmount]) => {
+            if (presentParticipants.includes(name)) {
+                if (name === paidBy) {
+                    // Payer's balance increases by difference between what they paid and their share
+                    balances[paidBy][currency] = (balances[paidBy][currency] || 0) + (amount - splitAmount);
+                } else {
+                    // Others owe their share
+                    balances[name][currency] = (balances[name][currency] || 0) - splitAmount;
+                    balances[paidBy][currency] = (balances[paidBy][currency] || 0) + splitAmount;
+                }
             }
         });
     });
 
-    // For each currency, create the most efficient settlements
-    Object.keys(totals).forEach(currency => {
+    // Calculate settlements for each currency
+    ['GBP', 'EUR', 'HKD'].forEach(currency => {
         settlements[currency] = [];
-        
-        // Get all participants who have non-zero balances in this currency
-        const debtors = [];
-        const creditors = [];
-        
+        const currencyBalances = {};
+
+        // Get non-zero balances for this currency
         participants.forEach(name => {
             const balance = balances[name][currency];
             if (Math.abs(balance) > 0.01) {
-                if (balance < 0) {
-                    debtors.push([name, -balance]);  // Convert to positive amount for easier handling
-                } else {
-                    creditors.push([name, balance]);
-                }
+                currencyBalances[name] = balance;
             }
         });
 
-        // Sort by amount (largest first) to handle larger debts first
-        debtors.sort((a, b) => b[1] - a[1]);
-        creditors.sort((a, b) => b[1] - a[1]);
+        // Calculate settlements
+        while (Object.keys(currencyBalances).length > 1) {
+            const debtors = Object.entries(currencyBalances)
+                .filter(([_, balance]) => balance < 0)
+                .sort((a, b) => a[1] - b[1]);  // Most negative first
 
-        // Create settlements
-        while (debtors.length > 0 && creditors.length > 0) {
-            const [debtorName, debtAmount] = debtors[0];
-            const [creditorName, creditAmount] = creditors[0];
+            const creditors = Object.entries(currencyBalances)
+                .filter(([_, balance]) => balance > 0)
+                .sort((a, b) => b[1] - a[1]);  // Most positive first
 
-            const amount = Math.min(debtAmount, creditAmount);
+            if (!debtors.length || !creditors.length) break;
+
+            const [debtorName, debtorBalance] = debtors[0];
+            const [creditorName, creditorBalance] = creditors[0];
+            
+            const amount = Math.min(-debtorBalance, creditorBalance);
             const roundedAmount = parseFloat(amount.toFixed(2));
 
             if (roundedAmount > 0.01) {
@@ -918,20 +739,13 @@ function calculateSettlement() {
                 });
             }
 
-            // Update remaining amounts
-            if (debtAmount - amount < 0.01) {
-                debtors.shift();
-            } else {
-                debtors[0][1] = parseFloat((debtAmount - amount).toFixed(2));
-            }
+            currencyBalances[debtorName] += amount;
+            currencyBalances[creditorName] -= amount;
 
-            if (creditAmount - amount < 0.01) {
-                creditors.shift();
-            } else {
-                creditors[0][1] = parseFloat((creditAmount - amount).toFixed(2));
-            }
+            if (Math.abs(currencyBalances[debtorName]) < 0.01) delete currencyBalances[debtorName];
+            if (Math.abs(currencyBalances[creditorName]) < 0.01) delete currencyBalances[creditorName];
         }
     });
 
-    return { settlements, totals, balances };
+    return { settlements, balances };
 }
