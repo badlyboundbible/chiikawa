@@ -619,66 +619,88 @@ function updateSettlementSummary() {
         return;
     }
 
-    let settlementHtml = '';
+    // Calculate what each person owes to each payer
+    const owes = {};
     
-    // For each participant, show their settlement summary
-    participants.forEach(participant => {
-        let hasTransactions = false;
-        let participantHtml = `
-            <div class="participant-settlements">
-                <h3>${participant}'s Summary:</h3>
-                <div class="settlements-list">`;
+    expenses.forEach(expense => {
+        const paidBy = expense.paidBy;
+        
+        // Skip if missing essential data
+        if (!paidBy || !expense.splits || !expense.currency) return;
+        
+        // Initialize payer in owes object if not exists
+        if (!owes[paidBy]) {
+            owes[paidBy] = {};
+        }
 
-        // Add their balance in each currency
-        Object.entries(summary.balances[participant] || {}).forEach(([currency, balance]) => {
-            if (Math.abs(balance) > 0.01) {
-                hasTransactions = true;
-                participantHtml += `
-                    <div class="balance-item">
-                        <span class="balance-label">Overall Balance:</span>
-                        <span class="balance-amount ${balance < 0 ? 'negative' : 'positive'}">
-                            ${getCurrencySymbol(currency)}${balance.toFixed(2)} ${currency}
-                        </span>
-                    </div>`;
+        // Add what each person owes to the payer
+        Object.entries(expense.splits).forEach(([person, amount]) => {
+            if (person !== paidBy) {  // Skip payer's own share
+                if (!owes[paidBy][person]) {
+                    owes[paidBy][person] = {};
+                }
+                if (!owes[paidBy][person][expense.currency]) {
+                    owes[paidBy][person][expense.currency] = 0;
+                }
+                owes[paidBy][person][expense.currency] += amount;
+            }
+        });
+    });
+
+    // Create summary HTML
+    let settlementHtml = '';
+
+    // Show what each person owes
+    participants.forEach(person => {
+        let personalSettlements = '';
+        let hasSettlements = false;
+
+        // Check what this person owes to others
+        participants.forEach(payer => {
+            if (owes[payer]?.[person]) {
+                Object.entries(owes[payer][person]).forEach(([currency, amount]) => {
+                    if (amount > 0.01) {  // Only show non-zero amounts
+                        hasSettlements = true;
+                        personalSettlements += `
+                            <div class="settlement-item">
+                                Pay ${payer}: 
+                                <span class="settlement-amount">
+                                    ${getCurrencySymbol(currency)}${amount.toFixed(2)} ${currency}
+                                </span>
+                            </div>`;
+                    }
+                });
             }
         });
 
-        // Add what they need to pay
-        Object.entries(summary.settlements).forEach(([currency, settlements]) => {
-            settlements.forEach(s => {
-                if (s.from === participant) {
-                    hasTransactions = true;
-                    participantHtml += `
-                        <div class="settlement-item owing">
-                            Pay ${s.to}:
-                            <span class="settlement-amount">
-                                ${getCurrencySymbol(currency)}${s.amount.toFixed(2)} ${currency}
-                            </span>
-                        </div>`;
+        // Check what others owe this person
+        participants.forEach(debtor => {
+            participants.forEach(payer => {
+                if (payer === person && owes[payer]?.[debtor]) {
+                    Object.entries(owes[payer][debtor]).forEach(([currency, amount]) => {
+                        if (amount > 0.01) {
+                            hasSettlements = true;
+                            personalSettlements += `
+                                <div class="settlement-item receiving">
+                                    Receive from ${debtor}: 
+                                    <span class="settlement-amount">
+                                        ${getCurrencySymbol(currency)}${amount.toFixed(2)} ${currency}
+                                    </span>
+                                </div>`;
+                        }
+                    });
                 }
             });
         });
 
-        // Add what they will receive
-        Object.entries(summary.settlements).forEach(([currency, settlements]) => {
-            settlements.forEach(s => {
-                if (s.to === participant) {
-                    hasTransactions = true;
-                    participantHtml += `
-                        <div class="settlement-item receiving">
-                            Receive from ${s.from}:
-                            <span class="settlement-amount">
-                                ${getCurrencySymbol(currency)}${s.amount.toFixed(2)} ${currency}
-                            </span>
-                        </div>`;
-                }
-            });
-        });
-
-        participantHtml += '</div></div>';
-
-        if (hasTransactions) {
-            settlementHtml += participantHtml;
+        if (hasSettlements) {
+            settlementHtml += `
+                <div class="participant-settlements">
+                    <h3>${person}'s Settlements:</h3>
+                    <div class="settlements-list">
+                        ${personalSettlements}
+                    </div>
+                </div>`;
         }
     });
 
