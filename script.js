@@ -598,114 +598,87 @@ function updateSplitAmounts() {
 function updateSettlementSummary() {
     const summary = calculateSettlement();
     const summaryDiv = document.getElementById('settlementSummary');
-    const totalsDiv = document.getElementById('currencyTotals');
-
-    // Display currency totals
-    if (Object.keys(summary.totals).length === 0) {
-        totalsDiv.innerHTML = '<div class="empty-state">No expenses yet</div>';
-    } else {
-        totalsDiv.innerHTML = Object.entries(summary.totals)
-            .map(([currency, total]) =>
-                `<div class="currency-total">
-                    <strong>Total ${currency}:</strong> 
-                    ${getCurrencySymbol(currency)}${total.toFixed(2)}
-                </div>`
-            ).join('');
-    }
-
-    // Handle no expenses case
-    if (expenses.length === 0) {
-        summaryDiv.innerHTML = '<div class="empty-state">No expenses to settle</div>';
-        return;
-    }
-
-    // Calculate what each person owes to each payer
-    const owes = {};
-    
-    expenses.forEach(expense => {
-        const paidBy = expense.paidBy;
-        
-        // Skip if missing essential data
-        if (!paidBy || !expense.splits || !expense.currency) return;
-        
-        // Initialize payer in owes object if not exists
-        if (!owes[paidBy]) {
-            owes[paidBy] = {};
-        }
-
-        // Add what each person owes to the payer
-        Object.entries(expense.splits).forEach(([person, amount]) => {
-            if (person !== paidBy) {  // Skip payer's own share
-                if (!owes[paidBy][person]) {
-                    owes[paidBy][person] = {};
-                }
-                if (!owes[paidBy][person][expense.currency]) {
-                    owes[paidBy][person][expense.currency] = 0;
-                }
-                owes[paidBy][person][expense.currency] += amount;
-            }
-        });
-    });
-
-    // Create summary HTML
     let settlementHtml = '';
 
-    // Show what each person owes
+    // Group settlements by participant and currency
     participants.forEach(person => {
-        let personalSettlements = '';
-        let hasSettlements = false;
+        const personSettlements = {
+            EUR: { pay: [], receive: [] },
+            GBP: { pay: [], receive: [] },
+            HKD: { pay: [], receive: [] }
+        };
 
-        // Check what this person owes to others
-        participants.forEach(payer => {
-            if (owes[payer]?.[person]) {
-                Object.entries(owes[payer][person]).forEach(([currency, amount]) => {
-                    if (amount > 0.01) {  // Only show non-zero amounts
-                        hasSettlements = true;
-                        personalSettlements += `
-                            <div class="settlement-item">
-                                Pay ${payer}: 
-                                <span class="settlement-amount">
-                                    ${getCurrencySymbol(currency)}${amount.toFixed(2)} ${currency}
-                                </span>
-                            </div>`;
-                    }
-                });
-            }
-        });
-
-        // Check what others owe this person
-        participants.forEach(debtor => {
-            participants.forEach(payer => {
-                if (payer === person && owes[payer]?.[debtor]) {
-                    Object.entries(owes[payer][debtor]).forEach(([currency, amount]) => {
-                        if (amount > 0.01) {
-                            hasSettlements = true;
-                            personalSettlements += `
-                                <div class="settlement-item receiving">
-                                    Receive from ${debtor}: 
-                                    <span class="settlement-amount">
-                                        ${getCurrencySymbol(currency)}${amount.toFixed(2)} ${currency}
-                                    </span>
-                                </div>`;
-                        }
+        // Collect all settlements for this person
+        Object.entries(summary.settlements).forEach(([currency, settlements]) => {
+            settlements.forEach(s => {
+                if (s.from === person) {
+                    personSettlements[currency].pay.push({
+                        person: s.to,
+                        amount: s.amount
+                    });
+                }
+                if (s.to === person) {
+                    personSettlements[currency].receive.push({
+                        person: s.from,
+                        amount: s.amount
                     });
                 }
             });
         });
 
+        // Only show this person's section if they have settlements
+        const hasSettlements = Object.values(personSettlements).some(
+            curr => curr.pay.length > 0 || curr.receive.length > 0
+        );
+
         if (hasSettlements) {
             settlementHtml += `
-                <div class="participant-settlements">
-                    <h3>${person}'s Settlements:</h3>
-                    <div class="settlements-list">
-                        ${personalSettlements}
+                <div class="settlement-section">
+                    <h3>${person}'s Settlements</h3>
+                    <div class="settlement-tables">`;
+
+            // Show settlements for each currency if they exist
+            ['EUR', 'GBP', 'HKD'].forEach(currency => {
+                const currencyData = personSettlements[currency];
+                if (currencyData.pay.length > 0 || currencyData.receive.length > 0) {
+                    settlementHtml += `
+                        <div class="currency-group">
+                            <h4>${currency} Settlements</h4>
+                            <table class="settlement-table">
+                                <tbody>`;
+                    
+                    // Outgoing payments
+                    currencyData.pay.forEach(payment => {
+                        settlementHtml += `
+                            <tr class="payment-row">
+                                <td class="direction">Pay:</td>
+                                <td class="person">${payment.person}</td>
+                                <td class="amount">${getCurrencySymbol(currency)}${payment.amount.toFixed(2)}</td>
+                            </tr>`;
+                    });
+
+                    // Incoming payments
+                    currencyData.receive.forEach(payment => {
+                        settlementHtml += `
+                            <tr class="receive-row">
+                                <td class="direction">Receive from:</td>
+                                <td class="person">${payment.person}</td>
+                                <td class="amount">${getCurrencySymbol(currency)}${payment.amount.toFixed(2)}</td>
+                            </tr>`;
+                    });
+
+                    settlementHtml += `
+                                </tbody>
+                            </table>
+                        </div>`;
+                }
+            });
+
+            settlementHtml += `
                     </div>
                 </div>`;
         }
     });
-
-    summaryDiv.innerHTML = settlementHtml || '<div class="empty-state">All settled up!</div>';
-}
 
 // Format date for display
 function formatDate(dateString) {
