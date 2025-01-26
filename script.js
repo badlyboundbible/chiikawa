@@ -621,64 +621,68 @@ function updateSettlementSummary() {
 
     let settlementHtml = '';
     
-    // Display settlements by participant
+    // Group settlements by participant
     participants.forEach(participant => {
+        // Get all settlements where this participant is involved
         let participantSettlements = [];
-        
-        // Collect all settlements involving this participant
         Object.entries(summary.settlements).forEach(([currency, settlements]) => {
-            settlements.forEach(s => {
-                if (s.from === participant || s.to === participant) {
-                    participantSettlements.push({
-                        ...s,
-                        currency
-                    });
-                }
-            });
+            const paying = settlements.filter(s => s.from === participant);
+            const receiving = settlements.filter(s => s.to === participant);
+            
+            if (paying.length > 0 || receiving.length > 0) {
+                participantSettlements.push({
+                    currency,
+                    paying,
+                    receiving
+                });
+            }
         });
 
-        // Only show participant section if they have settlements
         if (participantSettlements.length > 0) {
             settlementHtml += `
                 <div class="participant-settlements">
                     <h3>${participant}'s Settlements:</h3>
-                    <div class="settlements-list">
-                        ${participantSettlements.map(s => {
-                            const isOwing = s.from === participant;
-                            return `
-                                <div class="settlement-item ${isOwing ? 'owing' : 'receiving'}">
-                                    ${isOwing ? 
-                                        `Pay ${s.to}` :
-                                        `Receive from ${s.from}`
-                                    }
-                                    <span class="settlement-amount">
-                                        ${getCurrencySymbol(s.currency)}${s.amount.toFixed(2)} ${s.currency}
-                                    </span>
-                                </div>`;
-                        }).join('')}
+                    <div class="settlements-list">`;
+
+            participantSettlements.forEach(({ currency, paying, receiving }) => {
+                // Show who they need to pay
+                paying.forEach(s => {
+                    settlementHtml += `
+                        <div class="settlement-item owing">
+                            Pay ${s.to}
+                            <span class="settlement-amount">
+                                ${getCurrencySymbol(currency)}${s.amount.toFixed(2)} ${currency}
+                            </span>
+                        </div>`;
+                });
+
+                // Show who they will receive from
+                receiving.forEach(s => {
+                    settlementHtml += `
+                        <div class="settlement-item receiving">
+                            Receive from ${s.from}
+                            <span class="settlement-amount">
+                                ${getCurrencySymbol(currency)}${s.amount.toFixed(2)} ${currency}
+                            </span>
+                        </div>`;
+                });
+            });
+
+            // Show their balance
+            Object.entries(summary.balances[participant]).forEach(([currency, amount]) => {
+                if (Math.abs(amount) > 0.01) {
+                    settlementHtml += `
+                        <div class="balance-item">
+                            <span class="balance-amount ${amount < 0 ? 'negative' : 'positive'}">
+                                Balance: ${getCurrencySymbol(currency)}${amount.toFixed(2)} ${currency}
+                            </span>
+                        </div>`;
+                }
+            });
+
+            settlementHtml += `
                     </div>
                 </div>`;
-        }
-
-        // Display individual balance for this participant
-        const balances = summary.balances[participant];
-        if (balances) {
-            const nonZeroBalances = Object.entries(balances)
-                .filter(([_, amount]) => Math.abs(amount) > 0.01)
-                .map(([currency, amount]) => {
-                    const formattedAmount = amount.toFixed(2);
-                    return `<span class="${amount < 0 ? 'negative' : 'positive'}">
-                        ${getCurrencySymbol(currency)}${formattedAmount} ${currency}
-                    </span>`;
-                }).join(', ');
-
-            if (nonZeroBalances) {
-                settlementHtml += `
-                    <div class="balance-item">
-                        <span class="person-name">${participant}'s balance:</span>
-                        <span class="balance-amount">${nonZeroBalances}</span>
-                    </div>`;
-            }
         }
     });
 
@@ -865,61 +869,74 @@ function calculateSettlement() {
         }
     });
 
-    // Calculate raw balances for each expense
-    expenses.forEach(e => {
-        if (!e || !e.currency || !e.amount || !e.paidBy || !e.splits) return;
-        
-        // Add to total for this currency
-        totals[e.currency] = (totals[e.currency] || 0) + e.amount;
-        
-        // Add the full amount to payer's balance
-        balances[e.paidBy][e.currency] = (balances[e.paidBy][e.currency] || 0) + e.amount;
+    // Calculate balances for each expense individually
+    expenses.forEach(expense => {
+        if (!expense || !expense.currency || !expense.amount || !expense.paidBy || !expense.splits) return;
 
-        // Subtract what each person owes
-        Object.entries(e.splits).forEach(([name, amount]) => {
-            balances[name][e.currency] = (balances[name][e.currency] || 0) - amount;
+        const currency = expense.currency;
+        const paidBy = expense.paidBy;
+
+        // Update total for this currency
+        totals[currency] = (totals[currency] || 0) + expense.amount;
+
+        // For each split, calculate what each person owes to the payer
+        Object.entries(expense.splits).forEach(([name, amount]) => {
+            if (name !== paidBy) { // Skip if it's the payer's own share
+                // Person owes money to the payer
+                balances[name][currency] = (balances[name][currency] || 0) - amount;
+                // Payer gets money from this person
+                balances[paidBy][currency] = (balances[paidBy][currency] || 0) + amount;
+            }
         });
     });
 
-    // Calculate netted settlements for each currency
+    // Create settlements for each currency
     Object.keys(totals).forEach(currency => {
         settlements[currency] = [];
-        const currencyBalances = {};
+        const debtors = [];
+        const creditors = [];
 
-        // Get non-zero balances
+        // Separate participants into debtors and creditors
         participants.forEach(name => {
-            if (Math.abs(balances[name][currency]) > 0.01) {
-                currencyBalances[name] = balances[name][currency];
+            const balance = balances[name][currency];
+            if (Math.abs(balance) > 0.01) {
+                if (balance < 0) {
+                    debtors.push([name, -balance]); // Make amount positive
+                } else {
+                    creditors.push([name, balance]);
+                }
             }
         });
 
-        // Sort participants by balance
-        const sortedBalances = Object.entries(currencyBalances)
-            .sort((a, b) => a[1] - b[1]); // Sort by balance amount
+        // Sort both arrays by amount (largest first)
+        debtors.sort((a, b) => b[1] - a[1]);
+        creditors.sort((a, b) => b[1] - a[1]);
 
-        // For each pair of participants, calculate the net amount
-        for (let i = 0; i < sortedBalances.length; i++) {
-            for (let j = i + 1; j < sortedBalances.length; j++) {
-                const [name1, balance1] = sortedBalances[i];
-                const [name2, balance2] = sortedBalances[j];
+        // Match debtors with creditors
+        debtors.forEach(([debtorName, debtAmount]) => {
+            let remainingDebt = debtAmount;
 
-                // If one owes the other, calculate the net amount
-                if (balance1 < 0 && balance2 > 0) {
-                    const amount = Math.min(-balance1, balance2);
-                    if (amount > 0.01) {
-                        settlements[currency].push({
-                            from: name1,
-                            to: name2,
-                            amount: parseFloat(amount.toFixed(2))
-                        });
-                        
-                        // Update balances
-                        sortedBalances[i][1] += amount;
-                        sortedBalances[j][1] -= amount;
+            while (remainingDebt > 0.01 && creditors.length > 0) {
+                const [creditorName, creditAmount] = creditors[0];
+                const transferAmount = Math.min(remainingDebt, creditAmount);
+
+                if (transferAmount > 0.01) {
+                    settlements[currency].push({
+                        from: debtorName,
+                        to: creditorName,
+                        amount: parseFloat(transferAmount.toFixed(2))
+                    });
+
+                    remainingDebt -= transferAmount;
+                    creditors[0][1] -= transferAmount;
+
+                    // Remove creditor if they've been fully paid
+                    if (creditors[0][1] < 0.01) {
+                        creditors.shift();
                     }
                 }
             }
-        }
+        });
     });
 
     return { settlements, totals, balances };
